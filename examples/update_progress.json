@@ -1,0 +1,19 @@
+{
+  "running": false,
+  "phase": "done",
+  "msg": "apply tar",
+  "ok": true,
+  "fwUpdated": false,
+  "filesUpdated": 0,
+  "error": "",
+  "download": {
+    "total": 166,
+    "sofar": 0,
+    "pct": 0
+  },
+  "apply": {
+    "total": 0,
+    "sofar": 0,
+    "pct": -1
+  }
+}

@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LISA PRO</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Outfit:wght@300;400;500;600;700&family=Syne:wght@700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}" />
+  </head>
+  <body>
+    <div class="atmosphere" aria-hidden="true">
+      <div class="glow glow-canopy"></div>
+      <div class="glow glow-led" id="ledGlow"></div>
+      <div class="grain"></div>
+    </div>
+
+    <header class="topbar">
+      <div class="brand-lockup">
+        <p class="eyebrow">Growbox control</p>
+        <h1 class="brand">LISA<span>PRO</span></h1>
+      </div>
+      <div class="link-status" id="linkStatus">
+        <span class="pulse-dot" id="linkDot"></span>
+        <div>
+          <strong id="linkLabel">Connecting…</strong>
+          <small id="deviceUrl">{{ device_url }}</small>
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero compact-hero" id="hero">
+        <div class="hero-copy">
+          <p class="phase-tag" id="phaseTag">—</p>
+          <h2 class="hero-title" id="heroTitle">Waiting for climate</h2>
+          <p class="hero-sub" id="heroSub">Live readings from inside the canopy.</p>
+          <div class="cta-row" id="ctaRow">
+            <button type="button" class="btn primary" id="btnGrow">Start grow</button>
+            <button type="button" class="btn ghost" id="btnDry">Start drying</button>
+          </div>
+        </div>
+
+        <div class="climate-stage" aria-live="polite">
+          <div class="climate-main">
+            <div class="reading xl">
+              <span class="label">Inside</span>
+              <span class="value mono" id="tempIn">—</span>
+              <span class="unit">°C</span>
+            </div>
+            <div class="reading xl">
+              <span class="label">Humidity</span>
+              <span class="value mono" id="humiIn">—</span>
+              <span class="unit">%</span>
+            </div>
+          </div>
+          <div class="climate-rail">
+            <div class="reading">
+              <span class="label">VPD in</span>
+              <span class="value mono" id="vpd">—</span>
+              <span class="unit">kPa</span>
+            </div>
+            <div class="reading">
+              <span class="label">VPD out</span>
+              <span class="value mono" id="vpdOut">—</span>
+              <span class="unit">kPa</span>
+            </div>
+            <div class="reading">
+              <span class="label">Target</span>
+              <span class="value mono" id="vpdTarget">—</span>
+              <span class="unit">kPa</span>
+            </div>
+            <div class="reading">
+              <span class="label">Outside</span>
+              <span class="value mono" id="tempOut">—</span>
+              <span class="unit">°C</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="actuators" aria-label="Actuators">
+        <div class="actuator" data-key="light">
+          <span class="act-label">Light</span>
+          <strong class="mono" id="lightVal">—</strong>
+          <div class="meter"><i id="lightBar"></i></div>
+        </div>
+        <div class="actuator" data-key="fan">
+          <span class="act-label">Exhaust</span>
+          <strong class="mono" id="fanVal">—</strong>
+          <div class="meter"><i id="fanBar"></i></div>
+        </div>
+        <div class="actuator" data-key="circ">
+          <span class="act-label">Circ</span>
+          <strong class="mono" id="fan3Val">—</strong>
+          <div class="meter"><i id="fan3Bar"></i></div>
+        </div>
+        <div class="actuator" data-key="pump">
+          <span class="act-label">Pump</span>
+          <strong class="mono" id="pumpVal">—</strong>
+          <div class="meter flat" id="pumpMeter"></div>
+        </div>
+        <div class="actuator" data-key="door">
+          <span class="act-label">Door</span>
+          <strong class="mono" id="doorVal">—</strong>
+          <div class="meter flat" id="doorMeter"></div>
+        </div>
+        <div class="actuator" data-key="panel">
+          <span class="act-label">Panel</span>
+          <strong class="mono" id="panelVal">—</strong>
+          <div class="meter"><i id="panelBar"></i></div>
+        </div>
+      </section>
+
+      <section class="grow-strip" id="growStrip">
+        <div>
+          <span class="label">Grow day</span>
+          <p class="mono big" id="growDay">—</p>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress"><i id="growProgress"></i></div>
+          <div class="progress-meta">
+            <span id="growMeta">No active cycle</span>
+            <span class="mono" id="ntpTime">—</span>
+          </div>
+        </div>
+        <form class="inline-form" id="dayForm">
+          <label>
+            Set day
+            <input class="mono" type="number" id="dayInput" min="1" max="200" value="1" />
+          </label>
+          <button type="submit" class="btn ghost small">Apply</button>
+        </form>
+      </section>
+
+      <nav class="tabs" role="tablist" aria-label="Main sections">
+        <button type="button" class="tab active" role="tab" aria-selected="true" data-tab="control">Control</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="chart">Chart</button>
+        <button type="button" class="tab" role="tab" aria-selected="false" data-tab="device">Device</button>
+      </nav>
+
+      <section class="tab-panel active" id="tab-control" role="tabpanel">
+        <div class="control-toolbar">
+          <div class="pid-status" id="pidStatus">
+            <div><span class="label">Mode</span><strong class="mono" id="pidMode">—</strong></div>
+            <div><span class="label">Command</span><strong class="mono" id="pidCmd">—</strong></div>
+            <div><span class="label">Error</span><strong class="mono" id="pidErr">—</strong></div>
+            <div><span class="label">State</span><strong class="mono" id="pidReason">—</strong></div>
+          </div>
+          <div class="cta-row control-toggles">
+            <label class="check big">
+              <input type="checkbox" id="pidEnabled" />
+              PID enabled
+            </label>
+            <button type="button" class="btn primary small" id="btnControlSave">Save</button>
+          </div>
+        </div>
+
+        <form id="controlForm" class="control-form">
+          <div class="control-row">
+            <fieldset class="control-card">
+              <legend>VPD overwrite</legend>
+              <label class="check">
+                <input type="checkbox" id="vpdOwEnabled" />
+                Override targets
+              </label>
+              <div
+                class="dual-range"
+                id="vpdRange"
+                data-min="0"
+                data-max="2.5"
+                data-step="0.01"
+                data-unit=" kPa"
+              >
+                <div class="dual-range-head">
+                  <span>Target band</span>
+                  <strong class="mono dual-range-label">—</strong>
+                </div>
+                <div class="dual-range-track">
+                  <div class="dual-range-fill"></div>
+                  <input class="dual-lo" type="range" id="vpdOwMin" min="0" max="2.5" step="0.01" value="1" />
+                  <input class="dual-hi" type="range" id="vpdOwMax" min="0" max="2.5" step="0.01" value="1.2" />
+                </div>
+              </div>
+            </fieldset>
+
+            <fieldset class="control-card">
+              <legend>Global PID</legend>
+              <div class="phase-grid pid-grid">
+                <label>Kp <input class="mono" type="number" step="0.1" id="pidKp" /></label>
+                <label>Ki <input class="mono" type="number" step="0.01" id="pidKi" /></label>
+                <label>Kd <input class="mono" type="number" step="0.1" id="pidKd" /></label>
+                <label>Ramp %/min <input class="mono" type="number" step="0.1" id="pidRamp" /></label>
+                <label>Interval s <input class="mono" type="number" step="0.5" id="pidInterval" /></label>
+                <label>Deadband <input class="mono" type="number" step="0.01" id="pidDeadband" /></label>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="fan-limits">
+            <div class="phases-head compact">
+              <div>
+                <h3 class="section-title sm">Stage climate</h3>
+                <p class="hero-sub phases-sub">Fan band for the PID, plus day/night LED % written to the device.</p>
+              </div>
+              <button type="button" class="btn ghost small" id="btnSeedFans">Seed from device</button>
+            </div>
+            <div id="fanLimitsRoot" class="stage-grid"></div>
+          </div>
+        </form>
+      </section>
+
+      <section class="tab-panel" id="tab-chart" role="tabpanel" hidden>
+        <div class="chart-wrap">
+          <div class="phases-head compact">
+            <div>
+              <h3 class="section-title sm">Control history</h3>
+              <p class="hero-sub phases-sub">Fan command vs limits, and VPD inside / outside / target.</p>
+            </div>
+            <div class="legend" id="chartLegend"></div>
+          </div>
+          <canvas id="pidChart" width="960" height="360" aria-label="PID history chart"></canvas>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-device" role="tabpanel" hidden>
+        <div class="panels">
+          <details class="panel" open>
+            <summary>Start options</summary>
+            <form class="stack-form" id="startForm">
+              <label>
+                Seed / strain
+                <input id="seedInput" type="text" placeholder="Basil" />
+              </label>
+              <label>
+                Total days
+                <input class="mono" id="totalDaysInput" type="number" min="1" max="200" value="90" />
+              </label>
+              <label>
+                Start on day
+                <input class="mono" id="startDayInput" type="number" min="1" max="200" value="1" />
+              </label>
+            </form>
+          </details>
+
+          <details class="panel">
+            <summary>Silent hours</summary>
+            <form class="stack-form" id="silentForm">
+              <label class="check">
+                <input type="checkbox" id="silentEnabled" />
+                Enable silent window
+              </label>
+              <div class="row-2">
+                <label>Start <input type="time" id="silentStart" value="22:00" /></label>
+                <label>End <input type="time" id="silentEnd" value="06:00" /></label>
+              </div>
+              <div class="row-2">
+                <label>Exhaust min <input class="mono" type="number" id="silentFExhMin" /></label>
+                <label>Exhaust max <input class="mono" type="number" id="silentFExhMax" /></label>
+              </div>
+              <div class="row-2">
+                <label>Circ min <input class="mono" type="number" id="silentFCircMin" /></label>
+                <label>Circ max <input class="mono" type="number" id="silentFCircMax" /></label>
+              </div>
+              <label class="check">
+                <input type="checkbox" id="silentPump" />
+                Allow pump in silent
+              </label>
+              <button type="submit" class="btn primary small">Save silent</button>
+            </form>
+          </details>
+
+          <details class="panel">
+            <summary>Door · MQTT · Notify</summary>
+            <div class="split-forms">
+              <form class="stack-form" id="doorForm">
+                <p class="phase-block-title">Door</p>
+                <label class="check"><input type="checkbox" id="doorPause" /> Pause control</label>
+                <label class="check"><input type="checkbox" id="doorLight" /> Force light on</label>
+                <label class="check"><input type="checkbox" id="doorPump" /> Turn pump off</label>
+                <label class="check"><input type="checkbox" id="doorLift" /> Lift LED panel</label>
+                <button type="submit" class="btn primary small">Save door</button>
+              </form>
+              <form class="stack-form" id="mqttForm">
+                <p class="phase-block-title">MQTT</p>
+                <label class="check"><input type="checkbox" id="mqttEnabled" /> Enabled</label>
+                <label>Server <input id="mqttServer" type="text" /></label>
+                <label>Port <input class="mono" id="mqttPort" type="number" value="1883" /></label>
+                <label>User <input id="mqttUser" type="text" autocomplete="username" /></label>
+                <label>Password <input id="mqttPass" type="password" autocomplete="current-password" /></label>
+                <button type="submit" class="btn primary small">Save MQTT</button>
+              </form>
+              <form class="stack-form" id="notifyForm">
+                <p class="phase-block-title">Notify</p>
+                <label class="check"><input type="checkbox" id="notifyEnabled" /> Enabled</label>
+                <label>Phone <input id="notifyPhone" type="tel" placeholder="+49170…" /></label>
+                <label>API key <input id="notifyKey" type="password" placeholder="leave blank to keep" /></label>
+                <button type="submit" class="btn primary small">Save notify</button>
+              </form>
+            </div>
+          </details>
+
+          <details class="panel">
+            <summary>Health &amp; system</summary>
+            <div class="health-grid" id="healthGrid"></div>
+            <dl class="sys-dl">
+              <div><dt>Firmware</dt><dd class="mono" id="fwVal">—</dd></div>
+              <div><dt>Build</dt><dd class="mono" id="buildVal">—</dd></div>
+              <div><dt>Uptime</dt><dd class="mono" id="uptimeVal">—</dd></div>
+              <div><dt>ESP temp</dt><dd class="mono" id="espTempVal">—</dd></div>
+              <div><dt>Wi‑Fi</dt><dd class="mono" id="wifiVal">—</dd></div>
+              <div><dt>MQTT</dt><dd class="mono" id="mqttStateVal">—</dd></div>
+            </dl>
+          </details>
+        </div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" hidden></div>
+    <dialog class="confirm" id="confirmDlg">
+      <form method="dialog" class="confirm-inner">
+        <p id="confirmMsg">Are you sure?</p>
+        <div class="cta-row">
+          <button value="cancel" class="btn ghost">Cancel</button>
+          <button value="ok" class="btn primary">Confirm</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  </body>
+</html>

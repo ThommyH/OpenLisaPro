@@ -1,0 +1,34 @@
+{
+  "setup_done": true,
+  "rtc_ok": true,
+  "modules": {
+    "i2c0": true,
+    "i2c1": true,
+    "sht_in": true,
+    "sht_out": true,
+    "dac": true,
+    "fan": true,
+    "rtc": true,
+    "tof": true,
+    "fs": true
+  },
+  "tof_mm": 690,
+  "tof_offset": 33,
+  "fan_rpm": 0,
+  "fan2_rpm": 0,
+  "fan3_rpm": 0,
+  "stepper": {
+    "pos_mm": 435.29,
+    "moving": false,
+    "homing": false,
+    "lastDone": true,
+    "uart_ok": true,
+    "max_travel_mm": 435.29
+  },
+  "wifi_ssid": "HACK ME IF YOU CAN 2",
+  "initial_setup_done": true,
+  "silent": {
+    "enabled": false,
+    "active": false
+  }
+}

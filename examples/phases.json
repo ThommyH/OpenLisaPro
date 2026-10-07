@@ -1,0 +1,127 @@
+{
+  "phases": [
+    {
+      "id": 0,
+      "name": "Seedling",
+      "schedule": {
+        "on": "06:00",
+        "off": "00:00",
+        "sunrise_min": 20,
+        "sunset_min": 20,
+        "use_silent": false,
+        "pump": false
+      },
+      "settings": {
+        "day": {
+          "led": 40,
+          "fan_min": 20,
+          "fan_max": 80,
+          "vpd_min": 0.4,
+          "vpd_max": 0.8,
+          "fan_circ_min": 25,
+          "fan_circ_max": 25
+        },
+        "night": {
+          "led": 0,
+          "fan_min": 20,
+          "fan_max": 60,
+          "vpd_min": 0.4,
+          "vpd_max": 0.8,
+          "fan_circ_min": 25,
+          "fan_circ_max": 25
+        },
+        "night_silent": {
+          "led": 0,
+          "fan_min": 10,
+          "fan_max": 40,
+          "vpd_min": 0.4,
+          "vpd_max": 0.8,
+          "fan_circ_min": 25,
+          "fan_circ_max": 25
+        }
+      }
+    },
+    {
+      "id": 1,
+      "name": "Vegetative",
+      "schedule": {
+        "on": "21:00",
+        "off": "14:00",
+        "sunrise_min": 20,
+        "sunset_min": 20,
+        "use_silent": false,
+        "pump": false
+      },
+      "settings": {
+        "day": {
+          "led": 30,
+          "fan_min": 25,
+          "fan_max": 100,
+          "vpd_min": 0.7,
+          "vpd_max": 1.1,
+          "fan_circ_min": 0,
+          "fan_circ_max": 0
+        },
+        "night": {
+          "led": 35,
+          "fan_min": 20,
+          "fan_max": 60,
+          "vpd_min": 0.8,
+          "vpd_max": 1.1,
+          "fan_circ_min": 0,
+          "fan_circ_max": 0
+        },
+        "night_silent": {
+          "led": 0,
+          "fan_min": 10,
+          "fan_max": 40,
+          "vpd_min": 0.8,
+          "vpd_max": 1.1,
+          "fan_circ_min": 0,
+          "fan_circ_max": 0
+        }
+      }
+    },
+    {
+      "id": 2,
+      "name": "Flowering",
+      "schedule": {
+        "on": "21:00",
+        "off": "11:00",
+        "sunrise_min": 20,
+        "sunset_min": 20,
+        "use_silent": false,
+        "pump": false
+      },
+      "settings": {
+        "day": {
+          "led": 30,
+          "fan_min": 20,
+          "fan_max": 40,
+          "vpd_min": 1.1,
+          "vpd_max": 1.2,
+          "fan_circ_min": 0,
+          "fan_circ_max": 0
+        },
+        "night": {
+          "led": 0,
+          "fan_min": 10,
+          "fan_max": 30,
+          "vpd_min": 1,
+          "vpd_max": 1.2,
+          "fan_circ_min": 0,
+          "fan_circ_max": 0
+        },
+        "night_silent": {
+          "led": 0,
+          "fan_min": 10,
+          "fan_max": 60,
+          "vpd_min": 1.15,
+          "vpd_max": 1.45,
+          "fan_circ_min": 0,
+          "fan_circ_max": 0
+        }
+      }
+    }
+  ]
+}

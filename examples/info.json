@@ -1,0 +1,22 @@
+{
+  "seed": "Basil",
+  "device_name": "LisaPro",
+  "network": {
+    "ssid": "MyWiFi",
+    "pass": "***",
+    "use_static": true,
+    "static": {
+      "ip": "192.168.1.50",
+      "mask": "255.255.255.0",
+      "gw": "192.168.178.1",
+      "dns": "192.168.178.3"
+    }
+  },
+  "notify": {
+    "enabled": true,
+    "phone": "***",
+    "apikey": "***"
+  },
+  "esp_temp": 39.6,
+  "tof_offset": 33
+}

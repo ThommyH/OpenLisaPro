@@ -1,0 +1,1159 @@
+openapi: 3.0.3
+info:
+  title: Lisa Pro Growbox HTTP API
+  description: |
+    Reverse-engineered OpenAPI for the **LuminaGrowX / Lisa Pro** growbox controller
+    (firmware observed: `V1.0.5`, build `Feb 19 2026 11:50:27`).
+
+    The stock web UI is a set of static HTML pages served by the device that call this
+    JSON API and a WebSocket live feed. There is **no authentication** on the HTTP API
+    on the local network.
+
+    ## Transport
+    - Base URL: `http://{device}/` (port 80 observed)
+    - JSON bodies use `Content-Type: application/json`
+    - CORS headers advertise `Access-Control-Allow-Origin: *` and methods `GET, POST, OPTIONS`
+    - Trailing slashes are accepted on several GET routes (e.g. `/api/status/`)
+    - Almost all write operations are **POST** (PUT/PATCH/DELETE return 404)
+
+    ## Live updates
+    - Poll `GET /api/status` (UI uses ~2–3 s)
+    - Or connect to `ws://{device}/ws` — server pushes the same JSON shape as `/api/status`
+
+    ## Success / error conventions
+    - Many POSTs return `{"ok": true}` on success
+    - Notify endpoints often return `{"ok": true, "sent": false|true}`
+    - Validation / parse errors typically return HTTP 400 with `{"error": "<message>"}`
+      (observed: `"bad json"`, `"unknown action"`)
+    - Unknown paths return plain text `Not found` with HTTP 404
+
+    ## Destructive / side-effecting operations
+    Use with care from an automation service:
+    - `POST /api/grow` `action=stop` — ends and resets the grow cycle
+    - `POST /api/drying` — start/stop drying mode
+    - `POST /api/network` with `reboot: true` — applies Wi‑Fi/IP and reboots
+    - `POST /api/setup/reset` — starts commissioning wizard / AP mode (reboot)
+    - `POST /api/settings/phases/reset` — restores factory phase presets
+    - `POST /api/update/remote` and `POST /api/update/upload` — OTA / package update
+    - `POST /api/notify/test` — may send a real SMS/WhatsApp (CallMeBot-style) message
+
+    ## Related static UI pages (not API)
+    `/`, `/settings`, `/update`, `/info`, `/setup` (setup currently serves the main UI),
+    `/CHANGELOG.md`, `/pico.min.css`
+  version: "1.0.5-re"
+  contact:
+    name: Reverse-engineered from device UI + live probing
+servers:
+  - url: http://192.168.178.242
+    description: Observed device on LAN (replace with your device IP or luminagrowx.local)
+  - url: http://{host}
+    description: Parameterized device host
+    variables:
+      host:
+        default: luminagrowx.local
+
+tags:
+  - name: status
+    description: Live telemetry and device state
+  - name: grow
+    description: Grow cycle control
+  - name: drying
+    description: Drying mode control
+  - name: settings
+    description: Climate / door / silent configuration
+  - name: network
+    description: Wi‑Fi and network settings
+  - name: notify
+    description: Phone notification (CallMeBot-style API key)
+  - name: mqtt
+    description: MQTT broker settings
+  - name: app
+    description: Device identity
+  - name: setup
+    description: Commissioning / diagnostics
+  - name: update
+    description: Firmware / filesystem OTA
+  - name: debug
+    description: UI telemetry helpers
+  - name: realtime
+    description: WebSocket live feed
+
+paths:
+  /api/status:
+    get:
+      tags: [status]
+      summary: Full live device status
+      description: |
+        Primary telemetry endpoint. Same payload is also pushed over WebSocket `/ws`.
+        UI polls this when WebSocket is unavailable.
+      operationId: getStatus
+      responses:
+        "200":
+          description: Current status snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Status"
+              examples:
+                sample:
+                  externalValue: ./examples/status.json
+
+  /api/info:
+    get:
+      tags: [status]
+      summary: Persistent config snapshot
+      description: |
+        Subset of configuration used to populate forms (network, notify, seed, device name).
+        Network password is masked as `********` when set. Notify `apikey` is returned in clear
+        here (unlike `/api/status`, which masks it as `***`).
+      operationId: getInfo
+      responses:
+        "200":
+          description: Config info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Info"
+              examples:
+                sample:
+                  externalValue: ./examples/info.json
+
+  /api/grow:
+    post:
+      tags: [grow]
+      summary: Start or stop a grow cycle / adjust day
+      description: |
+        Actions observed from the stock UI:
+        - `start` — start (or re-affirm) a grow. When used to correct the current day while
+          already running, UI sends only `{action, start_epoch}`.
+        - `stop` — end grow and reset (UI confirms first).
+
+        `start_epoch` is Unix seconds for “day 1 start”. UI computes
+        `now - (start_day - 1) * 86400`.
+      operationId: postGrow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GrowAction"
+            examples:
+              start:
+                value:
+                  action: start
+                  total_days: 90
+                  start_epoch: 1735689600
+                  seed: Basil
+              adjustDay:
+                value:
+                  action: start
+                  start_epoch: 1735689600
+              stop:
+                value:
+                  action: stop
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "400":
+          description: Bad JSON or unknown action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              examples:
+                unknown:
+                  value: { error: unknown action }
+                badJson:
+                  value: { error: bad json }
+
+  /api/drying:
+    post:
+      tags: [drying]
+      summary: Start or stop drying mode
+      operationId: postDrying
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DryingAction"
+            examples:
+              start:
+                value: { action: start }
+              stop:
+                value: { action: stop }
+      responses:
+        "200":
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+        "400":
+          description: Bad JSON or unknown action
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/settings/silent:
+    get:
+      tags: [settings]
+      summary: Get silent-hours settings
+      operationId: getSilentSettings
+      responses:
+        "200":
+          description: Silent schedule and fan limits
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SilentSettings"
+    post:
+      tags: [settings]
+      summary: Update silent-hours settings
+      description: Partial updates appear accepted; unspecified fields keep previous values.
+      operationId: postSilentSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SilentSettings"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+
+  /api/settings/door_actions:
+    get:
+      tags: [settings]
+      summary: Get door-open reaction settings
+      operationId: getDoorActions
+      responses:
+        "200":
+          description: Door action flags
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DoorActions"
+    post:
+      tags: [settings]
+      summary: Update door-open reaction settings
+      operationId: postDoorActions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DoorActions"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+
+  /api/settings/phases:
+    get:
+      tags: [settings]
+      summary: Get grow phase climate schedules
+      description: |
+        Typically three phases (Seedling / Vegetative / Flowering) with day/night/night_silent
+        climate setpoints and light schedules.
+      operationId: getPhases
+      responses:
+        "200":
+          description: Phase list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PhasesResponse"
+    post:
+      tags: [settings]
+      summary: Save grow phase climate schedules
+      operationId: postPhases
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PhasesResponse"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+
+  /api/settings/phases/reset:
+    post:
+      tags: [settings]
+      summary: Reset phases to factory defaults
+      description: Destructive — restores default phase presets.
+      operationId: resetPhases
+      responses:
+        "200":
+          description: Reset result
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/Ok"
+                  - $ref: "#/components/schemas/Error"
+
+  /api/network:
+    post:
+      tags: [network]
+      summary: Update Wi‑Fi / static IP / nested notify
+      description: |
+        Multipurpose config write used by the UI for Wi‑Fi changes. Setting `reboot: true`
+        causes the device to reboot after applying network settings.
+
+        The main UI also falls back to posting `{ notify: {...} }` here if `/api/notify` fails.
+        Empty / no-op bodies with `reboot: false` return ok without reboot (probed).
+      operationId: postNetwork
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NetworkUpdate"
+            examples:
+              wifiStatic:
+                value:
+                  ssid: MyWiFi
+                  pass: secret
+                  use_static: true
+                  static:
+                    ip: 192.168.1.50
+                    mask: 255.255.255.0
+                    gw: 192.168.1.1
+                    dns: 1.1.1.1
+                  reboot: true
+              notifyOnly:
+                value:
+                  notify:
+                    enabled: true
+                    phone: "+491701234567"
+      responses:
+        "200":
+          description: Accepted (may reboot shortly after if reboot=true)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+
+  /api/wifi/scan:
+    get:
+      tags: [network]
+      summary: Scan for Wi‑Fi networks (async)
+      description: |
+        First call typically returns HTTP **202** `{"status":"started"}`.
+        Poll until HTTP **200** with a JSON array of networks (UI polls up to ~15 s).
+      operationId: wifiScan
+      responses:
+        "202":
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: started
+        "200":
+          description: Scan results
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/WifiNetwork"
+
+  /api/notify:
+    post:
+      tags: [notify]
+      summary: Save notification settings
+      description: |
+        Omit `apikey` to keep the previously stored key (UI does this when the field shows
+        a masked value). Response includes `sent` (usually false for save).
+      operationId: postNotify
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotifyUpdate"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotifyResult"
+
+  /api/notify/test:
+    post:
+      tags: [notify]
+      summary: Send a test notification
+      description: |
+        May deliver a real message via the external notify provider.
+        UI sends `{phone}` only when the API key is already stored/masked; otherwise
+        `{phone, apikey}`. Invalid phones may still return HTTP 200 with `sent: false`
+        and can overwrite stored phone — validate client-side (`^\+\d{6,16}$`).
+      operationId: postNotifyTest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotifyTest"
+      responses:
+        "200":
+          description: Attempted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotifyResult"
+
+  /api/mqtt:
+    get:
+      tags: [mqtt]
+      summary: Get MQTT broker settings
+      description: Password is returned in clear text by the device.
+      operationId: getMqtt
+      responses:
+        "200":
+          description: MQTT settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MqttSettings"
+    post:
+      tags: [mqtt]
+      summary: Save MQTT broker settings
+      operationId: postMqtt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MqttSettings"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+
+  /api/app:
+    post:
+      tags: [app]
+      summary: Set device name
+      description: |
+        Stock UI rejects names containing spaces client-side. There is no GET on this path
+        (404); read `device_name` from `/api/info` or `/api/status` instead.
+      operationId: postApp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: LisaPro
+                  description: Device name (no spaces per UI validation)
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+
+  /api/setup/status:
+    get:
+      tags: [setup]
+      summary: Setup / diagnostics status
+      description: |
+        Used by the Info page for ToF distance/offset and as a fallback for stepper data.
+        Also reports module health and whether initial setup completed.
+      operationId: getSetupStatus
+      responses:
+        "200":
+          description: Setup/diagnostic snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SetupStatus"
+
+  /api/setup/reset:
+    post:
+      tags: [setup]
+      summary: Restart commissioning (factory setup / AP mode)
+      description: |
+        **Highly destructive.** Stock UI only enables this when grow and drying are inactive.
+        Device reboots and opens its own Wi‑Fi AP for setup. Do not call casually.
+      operationId: postSetupReset
+      responses:
+        "200":
+          description: Reset accepted (device will reboot)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Ok"
+            text/plain:
+              schema:
+                type: string
+
+  /api/update/check:
+    get:
+      tags: [update]
+      summary: Check for remote firmware update
+      operationId: checkUpdate
+      responses:
+        "200":
+          description: Update availability
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateCheck"
+
+  /api/update/remote:
+    post:
+      tags: [update]
+      summary: Start remote OTA update
+      description: |
+        Starts download/apply of the latest package. UI expects HTTP **202**, then polls
+        `/api/update/progress`. Control loop may pause during update.
+      operationId: startRemoteUpdate
+      responses:
+        "202":
+          description: Update started
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "200":
+          description: Accepted (alternate)
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/update/upload:
+    post:
+      tags: [update]
+      summary: Upload a local update package
+      description: |
+        Multipart form upload. Field name is **`package`** (file). UI expects HTTP **202**,
+        then polls `/api/update/progress`.
+      operationId: uploadUpdate
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [package]
+              properties:
+                package:
+                  type: string
+                  format: binary
+                  description: Update archive/package file
+      responses:
+        "202":
+          description: Upload accepted / apply started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  started:
+                    type: boolean
+              example: { started: true }
+
+  /api/update/progress:
+    get:
+      tags: [update]
+      summary: Poll update progress
+      operationId: getUpdateProgress
+      responses:
+        "200":
+          description: Progress snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateProgress"
+
+  /api/debug/touch:
+    get:
+      tags: [debug]
+      summary: UI debug beacon
+      description: |
+        No-op telemetry used by the stock UI while testing notifications.
+        Always returns plain text `ok`. Query params are free-form (`stage`, etc.).
+      operationId: debugTouch
+      parameters:
+        - name: stage
+          in: query
+          schema:
+            type: string
+          description: Arbitrary stage label from the UI
+        - name: en
+          in: query
+          schema:
+            type: string
+        - name: phoneLen
+          in: query
+          schema:
+            type: string
+        - name: key
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Acknowledged
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: ok
+
+components:
+  schemas:
+    Ok:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+          example: true
+        error:
+          type: string
+          description: Present on some failure responses that still use this envelope
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    NotifyResult:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        sent:
+          type: boolean
+          description: Whether an outbound notification was actually sent
+
+    GrowAction:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [start, stop]
+        total_days:
+          type: integer
+          minimum: 1
+          description: Planned grow length in days (used on start)
+        start_epoch:
+          type: integer
+          format: int64
+          description: Unix epoch seconds marking the start of day 1
+        seed:
+          type: string
+          description: Strain / seed label shown in UI
+
+    DryingAction:
+      type: object
+      required: [action]
+      properties:
+        action:
+          type: string
+          enum: [start, stop]
+
+    SilentSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        startH:
+          type: integer
+          minimum: 0
+          maximum: 23
+        startM:
+          type: integer
+          minimum: 0
+          maximum: 59
+        endH:
+          type: integer
+          minimum: 0
+          maximum: 23
+        endM:
+          type: integer
+          minimum: 0
+          maximum: 59
+        fanExhaustMin:
+          type: number
+        fanExhaustMax:
+          type: number
+        fanCircMin:
+          type: number
+        fanCircMax:
+          type: number
+        pumpEnabled:
+          type: boolean
+
+    DoorActions:
+      type: object
+      properties:
+        pauseControl:
+          type: boolean
+          description: Pause climate control while door is open
+        lightOn:
+          type: boolean
+          description: Force light on when door opens
+        pumpOff:
+          type: boolean
+          description: Turn pump off when door opens
+        liftPanel:
+          type: boolean
+          description: Lift LED panel (stepper) when door opens
+
+    PhaseModeSettings:
+      type: object
+      properties:
+        led:
+          type: number
+          description: LED intensity percent 0–100
+        fan_min:
+          type: number
+        fan_max:
+          type: number
+        vpd_min:
+          type: number
+          description: Target VPD lower bound (kPa)
+        vpd_max:
+          type: number
+          description: Target VPD upper bound (kPa)
+        fan_circ_min:
+          type: number
+          description: Circulation fan min %
+        fan_circ_max:
+          type: number
+          description: Circulation fan max %
+
+    PhaseSchedule:
+      type: object
+      properties:
+        on:
+          type: string
+          description: Lights-on time `HH:MM`
+          example: "06:00"
+        off:
+          type: string
+          description: Lights-off time `HH:MM`
+          example: "00:00"
+        sunrise_min:
+          type: integer
+          description: Sunrise ramp minutes
+        sunset_min:
+          type: integer
+          description: Sunset ramp minutes
+        use_silent:
+          type: boolean
+          description: Present in GET; not always written by stock UI editor
+        pump:
+          type: boolean
+
+    Phase:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        schedule:
+          $ref: "#/components/schemas/PhaseSchedule"
+        settings:
+          type: object
+          properties:
+            day:
+              $ref: "#/components/schemas/PhaseModeSettings"
+            night:
+              $ref: "#/components/schemas/PhaseModeSettings"
+            night_silent:
+              $ref: "#/components/schemas/PhaseModeSettings"
+
+    PhasesResponse:
+      type: object
+      required: [phases]
+      properties:
+        phases:
+          type: array
+          items:
+            $ref: "#/components/schemas/Phase"
+
+    StaticIp:
+      type: object
+      properties:
+        ip:
+          type: string
+        mask:
+          type: string
+        gw:
+          type: string
+        dns:
+          type: string
+
+    NetworkUpdate:
+      type: object
+      properties:
+        ssid:
+          type: string
+        pass:
+          type: string
+          description: Omit or leave unchanged if UI shows masked `********`
+        use_static:
+          type: boolean
+        static:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/StaticIp"
+          description: Object when use_static=true; null when DHCP
+        reboot:
+          type: boolean
+          description: If true, device reboots after applying network settings
+        notify:
+          $ref: "#/components/schemas/NotifyUpdate"
+
+    WifiNetwork:
+      type: object
+      properties:
+        ssid:
+          type: string
+        rssi:
+          type: integer
+        secure:
+          type: boolean
+
+    NotifyUpdate:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        phone:
+          type: string
+          description: E.164-like, UI validates `^\+\d{6,16}$`
+          example: "+491701234567"
+        apikey:
+          type: string
+          description: Provider API key; omit to keep existing
+
+    NotifyTest:
+      type: object
+      properties:
+        phone:
+          type: string
+        apikey:
+          type: string
+
+    MqttSettings:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        server:
+          type: string
+        port:
+          type: integer
+          example: 1883
+        user:
+          type: string
+        pass:
+          type: string
+
+    StepperStatus:
+      type: object
+      properties:
+        pos_mm:
+          type: number
+        moving:
+          type: boolean
+        homing:
+          type: boolean
+        lastDone:
+          type: boolean
+        uart_ok:
+          type: boolean
+        max_travel_mm:
+          type: number
+
+    HealthModules:
+      type: object
+      additionalProperties:
+        type: boolean
+      properties:
+        i2c0: { type: boolean }
+        i2c1: { type: boolean }
+        sht_in: { type: boolean }
+        sht_out: { type: boolean }
+        dac: { type: boolean }
+        fan: { type: boolean }
+        rtc: { type: boolean }
+        tof: { type: boolean }
+        fs: { type: boolean }
+
+    Health:
+      type: object
+      properties:
+        state:
+          type: string
+          example: ok
+        message:
+          type: string
+        control_paused:
+          type: boolean
+        modules:
+          $ref: "#/components/schemas/HealthModules"
+
+    GrowStatus:
+      type: object
+      properties:
+        started:
+          type: boolean
+        start_epoch:
+          type: integer
+          format: int64
+        total_days:
+          type: integer
+        day:
+          type: integer
+        phase:
+          type: string
+          description: Localized phase label from firmware (e.g. Blütephase)
+
+    DryingStatus:
+      type: object
+      properties:
+        active:
+          type: boolean
+        start_epoch:
+          type: integer
+          format: int64
+        day:
+          type: integer
+
+    NotifyStatus:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        phone:
+          type: string
+        apikey:
+          type: string
+          description: Masked as `***` in /api/status; clear in /api/info
+
+    ApStatus:
+      type: object
+      properties:
+        ssid:
+          type: string
+        ip:
+          type: string
+
+    MqttRuntime:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        connected:
+          type: boolean
+
+    SilentRuntime:
+      type: object
+      properties:
+        enabled:
+          type: boolean
+        active:
+          type: boolean
+          description: Whether silent mode is currently active by schedule
+
+    UpdateHint:
+      type: object
+      properties:
+        has_update:
+          type: boolean
+        latest:
+          type: string
+
+    Status:
+      type: object
+      description: Live telemetry (HTTP poll + WebSocket push)
+      properties:
+        ip: { type: string }
+        ssid: { type: string }
+        use_static: { type: boolean }
+        wifi_connected: { type: boolean }
+        internet_ok: { type: boolean }
+        rssi: { type: integer, description: "Wi‑Fi RSSI dBm" }
+        uptime_s: { type: integer }
+        ntp_time:
+          type: string
+          description: Local formatted time string from device RTC/NTP
+          example: "07.10.26 13:45:11"
+        temp_c: { type: number, nullable: true, description: Indoor temperature °C }
+        humi_rh: { type: number, nullable: true, description: Indoor humidity %RH }
+        vpd_kpa: { type: number, nullable: true }
+        temp_out_c: { type: number, nullable: true }
+        humi_out_rh: { type: number, nullable: true }
+        dew_c: { type: number, nullable: true }
+        light_on: { type: boolean }
+        light_pct: { type: number }
+        fan_on: { type: boolean }
+        fan_pct: { type: number }
+        fan_rpm: { type: integer }
+        fan2_on: { type: boolean }
+        fan2_pct: { type: number }
+        fan2_rpm: { type: integer }
+        fan3_on: { type: boolean }
+        fan3_pct: { type: number }
+        pump_on: { type: boolean }
+        door_open: { type: boolean }
+        stepper:
+          $ref: "#/components/schemas/StepperStatus"
+        health:
+          $ref: "#/components/schemas/Health"
+        tof_offset: { type: integer }
+        tof_mm: { type: integer }
+        grow:
+          $ref: "#/components/schemas/GrowStatus"
+        drying:
+          $ref: "#/components/schemas/DryingStatus"
+        notify:
+          $ref: "#/components/schemas/NotifyStatus"
+        ap:
+          $ref: "#/components/schemas/ApStatus"
+        seed: { type: string }
+        device_name: { type: string }
+        fw: { type: string, example: V1.0.5 }
+        build: { type: string }
+        ts: { type: integer, description: Device monotonic timestamp ms/ticks }
+        esp_temp: { type: number }
+        update:
+          $ref: "#/components/schemas/UpdateHint"
+        update_available: { type: boolean }
+        mqtt:
+          $ref: "#/components/schemas/MqttRuntime"
+        silent:
+          $ref: "#/components/schemas/SilentRuntime"
+
+    Info:
+      type: object
+      properties:
+        seed: { type: string }
+        device_name: { type: string }
+        network:
+          type: object
+          properties:
+            ssid: { type: string }
+            pass: { type: string, description: Masked as ******** when set }
+            use_static: { type: boolean }
+            static:
+              $ref: "#/components/schemas/StaticIp"
+        notify:
+          $ref: "#/components/schemas/NotifyStatus"
+        esp_temp: { type: number }
+        tof_offset: { type: integer }
+
+    SetupStatus:
+      type: object
+      properties:
+        setup_done: { type: boolean }
+        initial_setup_done: { type: boolean }
+        rtc_ok: { type: boolean }
+        modules:
+          $ref: "#/components/schemas/HealthModules"
+        tof_mm: { type: integer }
+        tof_offset: { type: integer }
+        fan_rpm: { type: integer }
+        fan2_rpm: { type: integer }
+        fan3_rpm: { type: integer }
+        stepper:
+          $ref: "#/components/schemas/StepperStatus"
+        wifi_ssid: { type: string }
+        silent:
+          $ref: "#/components/schemas/SilentRuntime"
+
+    UpdateCheck:
+      type: object
+      properties:
+        current: { type: string }
+        hasUpdate: { type: boolean }
+        latest: { type: string }
+        tar_url: { type: string }
+        changelog:
+          type: string
+          description: Present when an update is available (used by UI)
+
+    UpdateProgressCounters:
+      type: object
+      properties:
+        total: { type: integer }
+        sofar: { type: integer }
+        pct: { type: number }
+
+    UpdateProgress:
+      type: object
+      properties:
+        running: { type: boolean }
+        phase:
+          type: string
+          description: e.g. idle, download, apply, done, error
+        msg: { type: string }
+        ok: { type: boolean }
+        fwUpdated: { type: boolean }
+        filesUpdated: { type: integer }
+        error: { type: string }
+        download:
+          $ref: "#/components/schemas/UpdateProgressCounters"
+        apply:
+          $ref: "#/components/schemas/UpdateProgressCounters"
+
+  examples: {}
+
+x-websocket:
+  path: /ws
+  protocol: ws
+  description: |
+    WebSocket upgrade at `ws://{host}/ws` (or `wss://` if TLS were enabled; not observed).
+    After `101 Switching Protocols`, the server pushes JSON messages matching the
+    `Status` schema (same as `GET /api/status`). No client subscribe message is required
+    by the stock UI.
+  messages:
+    statusPush:
+      payload:
+        $ref: "#/components/schemas/Status"

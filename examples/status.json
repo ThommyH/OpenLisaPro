@@ -1,0 +1,94 @@
+{
+  "ip": "192.168.1.50",
+  "ssid": "MyWiFi",
+  "use_static": true,
+  "wifi_connected": true,
+  "internet_ok": true,
+  "rssi": -18,
+  "uptime_s": 406,
+  "ntp_time": "07.10.26 13:47:00",
+  "temp_c": 25.6,
+  "humi_rh": 51.3,
+  "vpd_kpa": null,
+  "temp_out_c": 21.8,
+  "humi_out_rh": 57.3,
+  "dew_c": 14.8,
+  "light_on": true,
+  "light_pct": 40,
+  "fan_on": false,
+  "fan_pct": 0,
+  "fan_rpm": 0,
+  "fan2_on": false,
+  "fan2_pct": 0,
+  "fan2_rpm": 0,
+  "fan3_on": false,
+  "fan3_pct": 0,
+  "pump_on": false,
+  "door_open": false,
+  "stepper": {
+    "pos_mm": 435.29,
+    "moving": false,
+    "homing": false,
+    "lastDone": true,
+    "uart_ok": true,
+    "max_travel_mm": 435.29
+  },
+  "health": {
+    "state": "ok",
+    "message": "",
+    "control_paused": false,
+    "modules": {
+      "i2c0": true,
+      "i2c1": true,
+      "sht_in": true,
+      "sht_out": true,
+      "dac": true,
+      "fan": true,
+      "rtc": true,
+      "tof": true,
+      "fs": true
+    }
+  },
+  "tof_offset": 33,
+  "tof_mm": 696,
+  "grow": {
+    "started": true,
+    "start_epoch": 1780577657,
+    "total_days": 90,
+    "day": 90,
+    "phase": "Bl\u00fctephase"
+  },
+  "drying": {
+    "active": false,
+    "start_epoch": 0,
+    "day": 0
+  },
+  "notify": {
+    "enabled": true,
+    "phone": "***",
+    "apikey": "***"
+  },
+  "ap": {
+    "ssid": "MyWiFi",
+    "ip": ""
+  },
+  "seed": "Basil",
+  "device_name": "LisaPro",
+  "fw": "V1.0.5",
+  "build": "Feb 19 2026 11:50:27",
+  "ts": 406040,
+  "esp_temp": 38.6,
+  "update": {
+    "has_update": false,
+    "latest": ""
+  },
+  "update_available": false,
+  "mqtt": {
+    "enabled": true,
+    "connected": false
+  },
+  "silent": {
+    "enabled": false,
+    "active": false
+  }
+}

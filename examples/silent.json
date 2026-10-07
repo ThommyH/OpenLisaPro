@@ -1,0 +1,12 @@
+{
+  "enabled": false,
+  "startH": 0,
+  "startM": 0,
+  "endH": 23,
+  "endM": 59,
+  "fanExhaustMin": 25,
+  "fanExhaustMax": 80,
+  "fanCircMin": 20,
+  "fanCircMax": 40,
+  "pumpEnabled": false
+}

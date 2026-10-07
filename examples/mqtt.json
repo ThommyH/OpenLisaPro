@@ -1,0 +1,7 @@
+{
+  "enabled": true,
+  "server": "mqtt.local",
+  "port": 1883,
+  "user": "mqttuser",
+  "pass": "***"
+}
