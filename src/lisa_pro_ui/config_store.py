@@ -27,11 +27,7 @@ DEFAULT_PID = {
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": False,
-    "vpd_overwrite": {
-        "enabled": False,
-        "vpd_min": 1.0,
-        "vpd_max": 1.2,
-    },
+    "vpd_targets": {},  # phase_id -> mode -> {vpd_min, vpd_max}
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
     "led": {},  # phase_id -> mode -> percent
     "pid": dict(DEFAULT_PID),
@@ -43,6 +39,7 @@ class ConfigStore:
         self.path = path
         self._lock = threading.RLock()
         self._data = deepcopy(DEFAULT_CONFIG)
+        self._legacy_vpd: dict[str, float] | None = None
         self.load()
 
     def load(self) -> dict[str, Any]:
@@ -53,8 +50,10 @@ class ConfigStore:
                     self._data = self._merge(DEFAULT_CONFIG, raw if isinstance(raw, dict) else {})
                 except (OSError, json.JSONDecodeError):
                     self._data = deepcopy(DEFAULT_CONFIG)
+                    self._legacy_vpd = None
             else:
                 self._data = deepcopy(DEFAULT_CONFIG)
+                self._legacy_vpd = None
             return deepcopy(self._data)
 
     def save(self) -> None:
@@ -72,17 +71,8 @@ class ConfigStore:
         with self._lock:
             if "enabled" in patch:
                 self._data["enabled"] = bool(patch["enabled"])
-            if "vpd_overwrite" in patch and isinstance(patch["vpd_overwrite"], dict):
-                vo = patch["vpd_overwrite"]
-                cur = self._data["vpd_overwrite"]
-                if "enabled" in vo:
-                    cur["enabled"] = bool(vo["enabled"])
-                if "vpd_min" in vo and vo["vpd_min"] is not None:
-                    cur["vpd_min"] = float(vo["vpd_min"])
-                if "vpd_max" in vo and vo["vpd_max"] is not None:
-                    cur["vpd_max"] = float(vo["vpd_max"])
-                if cur["vpd_min"] > cur["vpd_max"]:
-                    cur["vpd_min"], cur["vpd_max"] = cur["vpd_max"], cur["vpd_min"]
+            if "vpd_targets" in patch and isinstance(patch["vpd_targets"], dict):
+                self._data["vpd_targets"] = self._normalize_vpd_targets(patch["vpd_targets"])
             if "fan_limits" in patch and isinstance(patch["fan_limits"], dict):
                 self._data["fan_limits"] = self._normalize_fan_limits(patch["fan_limits"])
             if "led" in patch and isinstance(patch["led"], dict):
@@ -93,16 +83,23 @@ class ConfigStore:
             return deepcopy(self._data)
 
     def ensure_fan_limits_from_phases(self, phases: list[dict[str, Any]]) -> dict[str, Any]:
-        """Seed missing fan / LED overrides from device phase settings."""
+        """Seed missing fan / LED / VPD overrides from device phase settings."""
         with self._lock:
             changed = False
             limits = self._data.setdefault("fan_limits", {})
             led = self._data.setdefault("led", {})
+            vpd = self._data.setdefault("vpd_targets", {})
+            legacy = self._legacy_vpd
+            if legacy:
+                self._legacy_vpd = None
+                changed = True
+
             for phase in phases or []:
                 phase_id = str(phase.get("id", 0))
                 settings = phase.get("settings") or {}
                 bucket = limits.setdefault(phase_id, {})
                 led_bucket = led.setdefault(phase_id, {})
+                vpd_bucket = vpd.setdefault(phase_id, {})
                 for mode in MODES:
                     m = settings.get(mode) or {}
                     if mode not in bucket:
@@ -110,6 +107,19 @@ class ConfigStore:
                             "fan_min": float(m.get("fan_min", 20)),
                             "fan_max": float(m.get("fan_max", 80)),
                         }
+                        changed = True
+                    if mode not in vpd_bucket:
+                        if legacy:
+                            vpd_bucket[mode] = {
+                                "vpd_min": float(legacy["vpd_min"]),
+                                "vpd_max": float(legacy["vpd_max"]),
+                            }
+                        else:
+                            lo = float(m.get("vpd_min", 0.8))
+                            hi = float(m.get("vpd_max", 1.2))
+                            if lo > hi:
+                                lo, hi = hi, lo
+                            vpd_bucket[mode] = {"vpd_min": lo, "vpd_max": hi}
                         changed = True
                     if mode in LED_MODES and mode not in led_bucket:
                         led_bucket[mode] = float(max(0.0, min(100.0, float(m.get("led", 0)))))
@@ -165,6 +175,28 @@ class ConfigStore:
         return out
 
     @staticmethod
+    def _normalize_vpd_targets(raw: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for phase_id, modes in raw.items():
+            if not isinstance(modes, dict):
+                continue
+            bucket: dict[str, Any] = {}
+            for mode in MODES:
+                m = modes.get(mode)
+                if not isinstance(m, dict):
+                    continue
+                lo = float(m.get("vpd_min", 0.8))
+                hi = float(m.get("vpd_max", 1.2))
+                lo = max(0.0, min(2.5, lo))
+                hi = max(0.0, min(2.5, hi))
+                if lo > hi:
+                    lo, hi = hi, lo
+                bucket[mode] = {"vpd_min": lo, "vpd_max": hi}
+            if bucket:
+                out[str(phase_id)] = bucket
+        return out
+
+    @staticmethod
     def _normalize_led(raw: dict[str, Any]) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for phase_id, modes in raw.items():
@@ -181,7 +213,11 @@ class ConfigStore:
 
     def _merge(self, base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
         out = deepcopy(base)
+        legacy_overwrite = patch.get("vpd_overwrite") if isinstance(patch.get("vpd_overwrite"), dict) else None
+
         for key, value in patch.items():
+            if key == "vpd_overwrite":
+                continue
             if key == "pid" and isinstance(value, dict):
                 out["pid"] = deepcopy(value)
             elif key in out and isinstance(out[key], dict) and isinstance(value, dict):
@@ -191,11 +227,22 @@ class ConfigStore:
             else:
                 out[key] = deepcopy(value)
 
-        out.setdefault("vpd_overwrite", deepcopy(DEFAULT_CONFIG["vpd_overwrite"]))
+        out.setdefault("vpd_targets", {})
         out.setdefault("fan_limits", {})
         out.setdefault("led", {})
         out.setdefault("enabled", False)
         out["pid"] = self._coerce_global_pid(out.get("pid") if isinstance(out.get("pid"), dict) else {})
         if isinstance(out.get("led"), dict):
             out["led"] = self._normalize_led(out["led"])
+        if isinstance(out.get("vpd_targets"), dict):
+            out["vpd_targets"] = self._normalize_vpd_targets(out["vpd_targets"])
+
+        # Migrate legacy global overwrite → seed template for empty stages
+        if legacy_overwrite and legacy_overwrite.get("enabled") and not out["vpd_targets"]:
+            lo = float(legacy_overwrite.get("vpd_min", 1.0))
+            hi = float(legacy_overwrite.get("vpd_max", 1.2))
+            if lo > hi:
+                lo, hi = hi, lo
+            self._legacy_vpd = {"vpd_min": lo, "vpd_max": hi}
+
         return out

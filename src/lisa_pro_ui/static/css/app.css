@@ -139,9 +139,6 @@ body {
 
 .brand span {
   color: var(--leaf);
-  font-size: 0.42em;
-  vertical-align: super;
-  margin-left: 0.12em;
 }
 
 .link-status {
@@ -790,8 +787,14 @@ input:focus {
 
 .stage-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  grid-template-columns: 1fr;
   gap: 0.85rem;
+}
+
+@media (min-width: 1100px) {
+  .stage-grid {
+    grid-template-columns: repeat(auto-fit, minmax(26rem, 1fr));
+  }
 }
 
 .stage-card {
@@ -808,8 +811,8 @@ input:focus {
 
 .stage-mode-controls {
   display: grid;
-  grid-template-columns: 1.4fr 0.7fr;
-  gap: 0.75rem;
+  grid-template-columns: 1.1fr 1.1fr 0.7fr;
+  gap: 0.65rem;
   align-items: end;
 }
 

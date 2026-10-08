@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LISA PRO</title>
+    <title>OpenLisaPro</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -21,8 +21,8 @@
 
     <header class="topbar">
       <div class="brand-lockup">
-        <p class="eyebrow">Growbox control</p>
-        <h1 class="brand">LISA<span>PRO</span></h1>
+        <p class="eyebrow">Open growbox control</p>
+        <h1 class="brand">Open<span>LisaPro</span></h1>
       </div>
       <div class="link-status" id="linkStatus">
         <span class="pulse-dot" id="linkDot"></span>
@@ -161,51 +161,23 @@
         </div>
 
         <form id="controlForm" class="control-form">
-          <div class="control-row">
-            <fieldset class="control-card">
-              <legend>VPD overwrite</legend>
-              <label class="check">
-                <input type="checkbox" id="vpdOwEnabled" />
-                Override targets
-              </label>
-              <div
-                class="dual-range"
-                id="vpdRange"
-                data-min="0"
-                data-max="2.5"
-                data-step="0.01"
-                data-unit=" kPa"
-              >
-                <div class="dual-range-head">
-                  <span>Target band</span>
-                  <strong class="mono dual-range-label">—</strong>
-                </div>
-                <div class="dual-range-track">
-                  <div class="dual-range-fill"></div>
-                  <input class="dual-lo" type="range" id="vpdOwMin" min="0" max="2.5" step="0.01" value="1" />
-                  <input class="dual-hi" type="range" id="vpdOwMax" min="0" max="2.5" step="0.01" value="1.2" />
-                </div>
-              </div>
-            </fieldset>
-
-            <fieldset class="control-card">
-              <legend>Global PID</legend>
-              <div class="phase-grid pid-grid">
-                <label>Kp <input class="mono" type="number" step="0.1" id="pidKp" /></label>
-                <label>Ki <input class="mono" type="number" step="0.01" id="pidKi" /></label>
-                <label>Kd <input class="mono" type="number" step="0.1" id="pidKd" /></label>
-                <label>Ramp %/min <input class="mono" type="number" step="0.1" id="pidRamp" /></label>
-                <label>Interval s <input class="mono" type="number" step="0.5" id="pidInterval" /></label>
-                <label>Deadband <input class="mono" type="number" step="0.01" id="pidDeadband" /></label>
-              </div>
-            </fieldset>
-          </div>
+          <fieldset class="control-card">
+            <legend>Global PID</legend>
+            <div class="phase-grid pid-grid">
+              <label>Kp <input class="mono" type="number" step="0.1" id="pidKp" /></label>
+              <label>Ki <input class="mono" type="number" step="0.01" id="pidKi" /></label>
+              <label>Kd <input class="mono" type="number" step="0.1" id="pidKd" /></label>
+              <label>Ramp %/min <input class="mono" type="number" step="0.1" id="pidRamp" /></label>
+              <label>Interval s <input class="mono" type="number" step="0.5" id="pidInterval" /></label>
+              <label>Deadband <input class="mono" type="number" step="0.01" id="pidDeadband" /></label>
+            </div>
+          </fieldset>
 
           <div class="fan-limits">
             <div class="phases-head compact">
               <div>
                 <h3 class="section-title sm">Stage climate</h3>
-                <p class="hero-sub phases-sub">Fan band for the PID, plus day/night LED % written to the device.</p>
+                <p class="hero-sub phases-sub">VPD target band and fan limits per stage, plus day/night LED %.</p>
               </div>
               <button type="button" class="btn ghost small" id="btnSeedFans">Seed from device</button>
             </div>

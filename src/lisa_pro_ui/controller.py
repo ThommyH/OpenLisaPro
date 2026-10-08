@@ -151,7 +151,7 @@ class FanPidController:
             vpd_inside = vpd_kpa(status.get("temp_c"), status.get("humi_rh"))
         vpd_outside = vpd_kpa(status.get("temp_out_c"), status.get("humi_out_rh"))
 
-        vpd_min, vpd_max = self._vpd_targets(cfg, phase, mode)
+        vpd_min, vpd_max = self._vpd_targets(cfg, phase_id, phase, mode)
         target_raw = (vpd_min + vpd_max) / 2.0
         reachable = True
         target = target_raw
@@ -438,11 +438,16 @@ class FanPidController:
         return phase, int(phase.get("id", 0))
 
     @staticmethod
-    def _vpd_targets(cfg: dict[str, Any], phase: Optional[dict[str, Any]], mode: str) -> tuple[float, float]:
-        overwrite = cfg.get("vpd_overwrite") or {}
-        if overwrite.get("enabled"):
-            lo = float(overwrite.get("vpd_min", 1.0))
-            hi = float(overwrite.get("vpd_max", 1.2))
+    def _vpd_targets(
+        cfg: dict[str, Any],
+        phase_id: int,
+        phase: Optional[dict[str, Any]],
+        mode: str,
+    ) -> tuple[float, float]:
+        targets = (cfg.get("vpd_targets") or {}).get(str(phase_id)) or {}
+        if mode in targets:
+            lo = float(targets[mode]["vpd_min"])
+            hi = float(targets[mode]["vpd_max"])
         else:
             settings = ((phase or {}).get("settings") or {}).get(mode) or {}
             lo = float(settings.get("vpd_min", 0.8))

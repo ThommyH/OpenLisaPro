@@ -1,14 +1,14 @@
-# Lisa Pro UI
+# OpenLisaPro
 
-Modern Flask control panel and Python client for the **Lisa Pro / LuminaGrowX** growbox HTTP API.
+Open-source Flask control panel and Python client for the **Lisa Pro / LuminaGrowX** growbox HTTP API.
 
-Includes a **local fan PID** that takes over exhaust control by writing `fan_min = fan_max` on the device, using saved VPD / fan-limit overrides and outside VPD as a reachability cap.
+Includes a **local fan PID** that takes over exhaust control by writing `fan_min = fan_max` on the device, using saved VPD / fan / LED overrides and outside VPD as a reachability cap.
 
 ## Quick start
 
 ```bash
 uv sync
-LISA_PRO_URL=http://192.168.178.242 uv run lisa-pro-ui
+LISA_PRO_URL=http://192.168.178.242 uv run openlisapro
 ```
 
 Open [http://127.0.0.1:5050](http://127.0.0.1:5050).

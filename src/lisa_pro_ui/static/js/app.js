@@ -269,35 +269,47 @@
     if (state.controlDirty && !forceForm) return;
     if (state.controlHydrated && !forceForm) return;
 
-    const vo = cfg.vpd_overwrite || {};
     const pid = cfg.pid || {};
     $("pidEnabled").checked = !!cfg.enabled;
-    $("vpdOwEnabled").checked = !!vo.enabled;
-    setDualRange($("vpdRange"), vo.vpd_min ?? 1, vo.vpd_max ?? 1.2);
     $("pidKp").value = pid.kp ?? "";
     $("pidKi").value = pid.ki ?? "";
     $("pidKd").value = pid.kd ?? "";
     $("pidRamp").value = pid.ramp_pct_per_min ?? "";
     $("pidInterval").value = pid.interval_s ?? "";
     $("pidDeadband").value = pid.deadband_kpa ?? "";
-    renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {});
+    renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {}, cfg.vpd_targets || {});
     state.controlHydrated = true;
     state.controlDirty = false;
   }
 
-  function dualRangeHtml({ phaseId, mode, min, max, label }) {
-    return `<div class="dual-range" data-phase="${phaseId}" data-mode="${mode}" data-min="0" data-max="100" data-step="1" data-unit="%">
+  function dualRangeHtml({
+    phaseId,
+    mode,
+    min,
+    max,
+    label,
+    fieldLo,
+    fieldHi,
+    rangeMin = 0,
+    rangeMax = 100,
+    step = 1,
+    unit = "%",
+    kind = "fan",
+  }) {
+    const fmt = (n) => (step < 1 ? Number(n).toFixed(2) : String(Math.round(n)));
+    return `<div class="dual-range" data-kind="${kind}" data-phase="${phaseId}" data-mode="${mode}"
+      data-min="${rangeMin}" data-max="${rangeMax}" data-step="${step}" data-unit="${unit}">
       <div class="dual-range-head">
         <span>${label}</span>
-        <strong class="mono dual-range-label">${Math.round(min)}–${Math.round(max)}%</strong>
+        <strong class="mono dual-range-label">${fmt(min)}–${fmt(max)}${unit}</strong>
       </div>
       <div class="dual-range-track">
         <div class="dual-range-fill"></div>
-        <input class="dual-lo" type="range" min="0" max="100" step="1" value="${min}"
-          data-phase="${phaseId}" data-mode="${mode}" data-field="fan_min"
+        <input class="dual-lo" type="range" min="${rangeMin}" max="${rangeMax}" step="${step}" value="${min}"
+          data-phase="${phaseId}" data-mode="${mode}" data-field="${fieldLo}" data-kind="${kind}"
           aria-label="${label} min" />
-        <input class="dual-hi" type="range" min="0" max="100" step="1" value="${max}"
-          data-phase="${phaseId}" data-mode="${mode}" data-field="fan_max"
+        <input class="dual-hi" type="range" min="${rangeMin}" max="${rangeMax}" step="${step}" value="${max}"
+          data-phase="${phaseId}" data-mode="${mode}" data-field="${fieldHi}" data-kind="${kind}"
           aria-label="${label} max" />
       </div>
     </div>`;
@@ -377,7 +389,7 @@
     });
   }
 
-  function renderStageCards(phases, limits, ledMap) {
+  function renderStageCards(phases, limits, ledMap, vpdMap) {
     const root = $("fanLimitsRoot");
     root.innerHTML = "";
     (phases || []).forEach((phase) => {
@@ -386,9 +398,12 @@
       card.className = "stage-card";
       const rows = MODES.map((mode) => {
         const lim = (limits[id] && limits[id][mode]) || {};
+        const vpd = (vpdMap[id] && vpdMap[id][mode]) || {};
         const device = ((phase.settings || {})[mode]) || {};
-        const min = lim.fan_min != null ? lim.fan_min : device.fan_min ?? 20;
-        const max = lim.fan_max != null ? lim.fan_max : device.fan_max ?? 80;
+        const fanMin = lim.fan_min != null ? lim.fan_min : device.fan_min ?? 20;
+        const fanMax = lim.fan_max != null ? lim.fan_max : device.fan_max ?? 80;
+        const vpdMin = vpd.vpd_min != null ? vpd.vpd_min : device.vpd_min ?? 0.8;
+        const vpdMax = vpd.vpd_max != null ? vpd.vpd_max : device.vpd_max ?? 1.2;
         const ledBlock =
           mode === "day" || mode === "night"
             ? ledSliderHtml({
@@ -406,9 +421,30 @@
             ${dualRangeHtml({
               phaseId: id,
               mode,
-              min,
-              max,
+              min: vpdMin,
+              max: vpdMax,
+              label: "VPD",
+              fieldLo: "vpd_min",
+              fieldHi: "vpd_max",
+              rangeMin: 0,
+              rangeMax: 2.5,
+              step: 0.01,
+              unit: " kPa",
+              kind: "vpd",
+            })}
+            ${dualRangeHtml({
+              phaseId: id,
+              mode,
+              min: fanMin,
+              max: fanMax,
               label: "Fan",
+              fieldLo: "fan_min",
+              fieldHi: "fan_max",
+              rangeMin: 0,
+              rangeMax: 100,
+              step: 1,
+              unit: "%",
+              kind: "fan",
             })}
             ${ledBlock}
           </div>
@@ -432,17 +468,26 @@
     bindDualRanges(root);
   }
 
-  function collectFanLimits() {
+  function collectKindLimits(kind, fields) {
     const out = {};
-    document.querySelectorAll("#fanLimitsRoot input[data-field]").forEach((el) => {
+    document.querySelectorAll(`#fanLimitsRoot input[data-kind="${kind}"]`).forEach((el) => {
       const phaseId = el.dataset.phase;
       const mode = el.dataset.mode;
       const field = el.dataset.field;
+      if (!fields.includes(field)) return;
       out[phaseId] = out[phaseId] || {};
       out[phaseId][mode] = out[phaseId][mode] || {};
       out[phaseId][mode][field] = Number(el.value);
     });
     return out;
+  }
+
+  function collectFanLimits() {
+    return collectKindLimits("fan", ["fan_min", "fan_max"]);
+  }
+
+  function collectVpdTargets() {
+    return collectKindLimits("vpd", ["vpd_min", "vpd_max"]);
   }
 
   function collectLed() {
@@ -459,11 +504,7 @@
   function collectControlPayload() {
     return {
       enabled: $("pidEnabled").checked,
-      vpd_overwrite: {
-        enabled: $("vpdOwEnabled").checked,
-        vpd_min: Number($("vpdOwMin").value),
-        vpd_max: Number($("vpdOwMax").value),
-      },
+      vpd_targets: collectVpdTargets(),
       pid: {
         kp: Number($("pidKp").value),
         ki: Number($("pidKi").value),
@@ -801,14 +842,18 @@
   $("btnControlSave").addEventListener("click", () =>
     withBusy(async () => {
       const payload = collectControlPayload();
-      if (payload.vpd_overwrite.vpd_min > payload.vpd_overwrite.vpd_max) {
-        toast("VPD min > max");
-        return;
+      for (const [phaseId, modes] of Object.entries(payload.vpd_targets)) {
+        for (const [mode, lim] of Object.entries(modes)) {
+          if (lim.vpd_min > lim.vpd_max) {
+            toast(`Phase ${phaseId} ${mode}: VPD min > max`);
+            return;
+          }
+        }
       }
       for (const [phaseId, modes] of Object.entries(payload.fan_limits)) {
         for (const [mode, lim] of Object.entries(modes)) {
           if (lim.fan_min > lim.fan_max) {
-            toast(`Phase ${phaseId} ${mode}: min > max`);
+            toast(`Phase ${phaseId} ${mode}: fan min > max`);
             return;
           }
         }

@@ -28,22 +28,30 @@ def test_resolve_phase_by_name_substring():
     assert phase["name"] == "Vegetative"
 
 
-def test_vpd_targets_overwrite_vs_phase():
+def test_vpd_targets_prefer_per_stage_override():
     phase = {
         "settings": {
             "day": {"vpd_min": 0.4, "vpd_max": 0.8},
         }
     }
-    cfg = {"vpd_overwrite": {"enabled": False}}
-    assert FanPidController._vpd_targets(cfg, phase, "day") == (0.4, 0.8)
+    cfg = {"vpd_targets": {}}
+    assert FanPidController._vpd_targets(cfg, 0, phase, "day") == (0.4, 0.8)
 
-    cfg = {"vpd_overwrite": {"enabled": True, "vpd_min": 1.0, "vpd_max": 1.2}}
-    assert FanPidController._vpd_targets(cfg, phase, "day") == (1.0, 1.2)
+    cfg = {
+        "vpd_targets": {
+            "0": {"day": {"vpd_min": 1.0, "vpd_max": 1.2}},
+        }
+    }
+    assert FanPidController._vpd_targets(cfg, 0, phase, "day") == (1.0, 1.2)
 
 
 def test_vpd_targets_swaps_inverted_range():
-    cfg = {"vpd_overwrite": {"enabled": True, "vpd_min": 1.4, "vpd_max": 1.0}}
-    assert FanPidController._vpd_targets(cfg, None, "day") == (1.0, 1.4)
+    cfg = {
+        "vpd_targets": {
+            "1": {"night": {"vpd_min": 1.4, "vpd_max": 1.0}},
+        }
+    }
+    assert FanPidController._vpd_targets(cfg, 1, None, "night") == (1.0, 1.4)
 
 
 def test_fan_limits_prefer_override():

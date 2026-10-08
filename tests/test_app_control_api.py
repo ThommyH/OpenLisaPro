@@ -19,7 +19,13 @@ def test_control_get_and_post(tmp_path: Path):
         "/api/control",
         json={
             "enabled": False,
-            "vpd_overwrite": {"enabled": True, "vpd_min": 0.95, "vpd_max": 1.15},
+            "vpd_targets": {
+                "0": {
+                    "day": {"vpd_min": 0.95, "vpd_max": 1.15},
+                    "night": {"vpd_min": 0.9, "vpd_max": 1.1},
+                    "night_silent": {"vpd_min": 0.9, "vpd_max": 1.1},
+                }
+            },
             "pid": {"kp": 42, "ki": 0.2, "kd": 5, "ramp_pct_per_min": 3, "interval_s": 4, "deadband_kpa": 0.02},
             "fan_limits": {
                 "0": {
@@ -33,7 +39,7 @@ def test_control_get_and_post(tmp_path: Path):
     )
     assert saved.status_code == 200
     cfg = saved.get_json()["config"]
-    assert cfg["vpd_overwrite"]["vpd_min"] == 0.95
+    assert cfg["vpd_targets"]["0"]["day"]["vpd_min"] == 0.95
     assert cfg["pid"]["kp"] == 42.0
     assert cfg["fan_limits"]["0"]["day"]["fan_max"] == 60.0
     assert cfg["led"]["0"]["day"] == 45.0
@@ -43,3 +49,4 @@ def test_control_get_and_post(tmp_path: Path):
     again = client.get("/api/control").get_json()["config"]
     assert again["pid"]["kp"] == 42.0
     assert again["led"]["0"]["night"] == 0.0
+    assert again["vpd_targets"]["0"]["night"]["vpd_max"] == 1.1

@@ -13,7 +13,13 @@ def test_defaults_and_persist(tmp_path: Path):
     store.update(
         {
             "enabled": True,
-            "vpd_overwrite": {"enabled": True, "vpd_min": 0.9, "vpd_max": 1.1},
+            "vpd_targets": {
+                "2": {
+                    "day": {"vpd_min": 0.9, "vpd_max": 1.1},
+                    "night": {"vpd_min": 0.8, "vpd_max": 1.0},
+                    "night_silent": {"vpd_min": 0.8, "vpd_max": 1.0},
+                }
+            },
             "pid": {"kp": 40, "ki": 0.2},
             "fan_limits": {
                 "2": {
@@ -26,7 +32,7 @@ def test_defaults_and_persist(tmp_path: Path):
     )
     reloaded = ConfigStore(tmp_path / "control.json").get()
     assert reloaded["enabled"] is True
-    assert reloaded["vpd_overwrite"]["vpd_min"] == 0.9
+    assert reloaded["vpd_targets"]["2"]["day"]["vpd_min"] == 0.9
     assert reloaded["pid"]["kp"] == 40.0
     assert reloaded["pid"]["ki"] == 0.2
     assert reloaded["pid"]["kd"] == DEFAULT_PID["kd"]
@@ -118,9 +124,9 @@ def test_led_normalize_and_seed(tmp_path: Path):
             {
                 "id": 1,
                 "settings": {
-                    "day": {"led": 35, "fan_min": 10, "fan_max": 40},
-                    "night": {"led": 0, "fan_min": 5, "fan_max": 20},
-                    "night_silent": {"led": 0, "fan_min": 5, "fan_max": 15},
+                    "day": {"led": 35, "fan_min": 10, "fan_max": 40, "vpd_min": 0.7, "vpd_max": 1.0},
+                    "night": {"led": 0, "fan_min": 5, "fan_max": 20, "vpd_min": 0.6, "vpd_max": 0.9},
+                    "night_silent": {"led": 0, "fan_min": 5, "fan_max": 15, "vpd_min": 0.6, "vpd_max": 0.9},
                 },
             }
         ]
@@ -128,3 +134,23 @@ def test_led_normalize_and_seed(tmp_path: Path):
     assert store2.get()["led"]["1"]["day"] == 35.0
     assert store2.get()["led"]["1"]["night"] == 0.0
     assert "night_silent" not in store2.get()["led"]["1"]
+    assert store2.get()["vpd_targets"]["1"]["day"]["vpd_max"] == 1.0
+
+
+def test_vpd_targets_clamp_and_swap(tmp_path: Path):
+    store = ConfigStore(tmp_path / "c.json")
+    store.update(
+        {
+            "vpd_targets": {
+                "0": {
+                    "day": {"vpd_min": 1.5, "vpd_max": 0.5},
+                    "night": {"vpd_min": -1, "vpd_max": 9},
+                }
+            }
+        }
+    )
+    day = store.get()["vpd_targets"]["0"]["day"]
+    night = store.get()["vpd_targets"]["0"]["night"]
+    assert day == {"vpd_min": 0.5, "vpd_max": 1.5}
+    assert night["vpd_min"] == 0.0
+    assert night["vpd_max"] == 2.5
