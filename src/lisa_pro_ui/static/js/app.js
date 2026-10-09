@@ -17,6 +17,11 @@
     night: "Night",
     night_silent: "Silent",
   };
+
+  const PID_REASON_LABELS = {
+    target_limited_by_outside_dew_point: "Outside-air limited",
+    throttling_unreachable: "Backing off · VPD not improving",
+  };
   const MODES = ["day", "night", "night_silent"];
   const LED_MODES = ["day", "night"];
 
@@ -356,7 +361,12 @@
     }
     const error = Number(st.pid_error);
     $("pidErr").textContent = st.pid_error == null ? "—" : `${error > 0 ? "+" : ""}${error.toFixed(3)} kPa`;
-    $("pidReason").textContent = st.reason || "—";
+    $("pidReason").textContent = PID_REASON_LABELS[st.reason] || st.reason || "—";
+    $("pidReason").title = st.reason === "target_limited_by_outside_dew_point"
+      ? "Outside air is too moist to reach the selected VPD target using ventilation alone."
+      : st.reason === "throttling_unreachable"
+        ? "VPD did not improve while the fan was at its upper limit, so the controller is reducing fan speed."
+        : "";
     $("pidStatus").classList.toggle("throttling", !!st.throttling);
     $("pidStatus").classList.toggle("active", !!enabled);
     if (state.status) updateClimate(state.status, st);
