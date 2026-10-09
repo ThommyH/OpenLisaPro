@@ -8,7 +8,7 @@ The web app runs on your own computer or server. It talks to the growbox over it
 
 - Shows inside and outside temperature, relative humidity, dew point, and VPD, along with the current grow stage and device status.
 - Lets you manage stage-specific VPD targets, fan limits, LED levels, and light-on/light-off schedules for day and night modes.
-- Runs an optional local PID controller for exhaust fan speed. It uses the inside VPD target and indoor dew point to determine a useful fan command, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
+- Runs an optional local PID controller for exhaust fan speed. It uses inside VPD as the control goal, estimates the ventilation limit from outside dew point at inside temperature, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
 - Displays the controller's current mode, status, and ramp target, with an expandable explanation of the calculation and its states.
 - Provides a chart of recent climate and fan history, and controls for growbox settings such as silent operation, door actions, and MQTT.
 - Includes `LisaProClient`, a small typed Python wrapper for the growbox API.
@@ -17,7 +17,7 @@ The UI can be viewed on desktop or mobile. The PID loop can write fan settings t
 
 ## Screenshots
 
-These screenshots use representative sample data and show the dashboard at desktop and mobile widths.
+These screenshots use mock device data and show the dashboard at desktop and mobile widths. The example has a requested VPD target of 1.50 kPa; outside dew point limits the ventilation-achievable target to 1.25 kPa, so the fan command ramps down instead of chasing an unreachable target. The mock server does not connect to a growbox.
 
 ![OpenLisaPro dashboard at desktop width](docs/screenshots/dashboard-desktop.png)
 
@@ -66,6 +66,12 @@ HOST=127.0.0.1 PORT=5050 LISA_PRO_URL=http://192.168.1.50 uv run lisa-pro-ui
 Open the **Control** tab to configure per-stage VPD targets and fan limits. The **Chart** tab shows recent history, and the **Device** tab contains growbox settings. PID tuning settings are collapsed by default. Expand them to adjust the gains, ramp rate, update interval, and deadband.
 
 Enable local PID control to let OpenLisaPro command the exhaust fan. The live status shows the current fan command; while it is ramping, it also shows the target speed. The configured light-on and light-off times for the active stage determine whether the controller uses day or night settings. The LEDs' current on/off state does not define the scheduled day/night mode.
+
+### VPD target and outside dew point
+
+Inside VPD remains the PID control goal because it reflects the current conditions around the plants. The controller also estimates the highest VPD ventilation can produce using outside dew point. Dew point represents incoming-air moisture content; the controller evaluates it at the inside temperature so that outside and inside VPD are compared at the same temperature. When the requested target is above this estimate, the PID uses the achievable limit and the dashboard shows both values.
+
+For example, outside air at 22°C and 59% RH has a dew point near 13.6°C. At an inside temperature of 23°C, that moisture level corresponds to about 1.25 kPa VPD. A requested target of 1.50 kPa is therefore limited to about 1.25 kPa for ventilation control. This is an estimate of what ventilation alone can achieve; moisture produced inside the grow space can reduce the actual result.
 
 The **Reset defaults** action restores local control defaults and the growbox's factory phase presets. Stage and device settings may be written to the connected hardware when you save or reset them.
 
