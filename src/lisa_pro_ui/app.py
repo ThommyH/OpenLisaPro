@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import atexit
 import os
-import threading
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -31,18 +30,7 @@ def create_app(
     app.config["DEVICE_URL"] = (device_url or os.environ.get("LISA_PRO_URL") or DEFAULT_BASE_URL).rstrip("/")
     data_path = Path(data_dir or DEFAULT_DATA_DIR)
     store = ConfigStore(data_path / "control.json")
-    silent_override_lock = threading.Lock()
-    silent_override: dict[str, bool | None] = {"active": None}
-
-    def current_silent_override() -> bool | None:
-        with silent_override_lock:
-            return silent_override["active"]
-
-    controller = FanPidController(
-        device_url=app.config["DEVICE_URL"],
-        store=store,
-        silent_mode_override_provider=current_silent_override,
-    )
+    controller = FanPidController(device_url=app.config["DEVICE_URL"], store=store)
     app.config["CONTROL_STORE"] = store
     app.config["FAN_CONTROLLER"] = controller
 
@@ -77,19 +65,17 @@ def create_app(
         limit = request.args.get("limit", default=360, type=int)
         return jsonify({"history": controller.history(limit=limit or 360)})
 
-    @app.get("/api/silent-override")
-    def silent_override_get():
-        return jsonify({"active": current_silent_override()})
-
-    @app.post("/api/silent-override")
-    def silent_override_post():
-        body = request.get_json(force=True, silent=True) or {}
-        active = body.get("active") if isinstance(body, dict) else None
-        if not isinstance(active, bool):
-            return jsonify({"error": "active must be a boolean"}), 400
-        with silent_override_lock:
-            silent_override["active"] = active
-        return jsonify({"active": active})
+    @app.post("/api/proxy/silent/toggle")
+    def proxy_toggle_silent():
+        try:
+            with client() as c:
+                settings = c.get_silent()
+                enabled = not bool(settings.get("enabled"))
+                settings["enabled"] = enabled
+                updated = c.set_silent(settings)
+            return _ok({**updated, "enabled": enabled})
+        except Exception as exc:
+            return _err(exc)
 
     led_status_pct = 0.0
 
@@ -244,12 +230,7 @@ def create_app(
     def proxy_status():
         try:
             with client() as c:
-                status = c.status()
-            override = current_silent_override()
-            if override is not None:
-                silent = status.get("silent") if isinstance(status.get("silent"), dict) else {}
-                status["silent"] = {**silent, "active": override}
-            return _ok(status)
+                return _ok(c.status())
         except Exception as exc:
             return _err(exc)
 

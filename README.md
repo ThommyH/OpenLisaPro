@@ -75,7 +75,7 @@ For example, outside air at 22°C and 59% RH has a dew point near 13.6°C. At an
 
 The **Reset defaults** action restores local control defaults and the growbox's factory phase presets. Stage and device settings may be written to the connected hardware when you save or reset them.
 
-Use **Enable silent mode** or **Disable silent mode** in the Control tab to immediately override the scheduled silent setting for local fan control. The override remains until toggled again or the app restarts. PID must be enabled for the local controller to apply the selected silent fan limits.
+Use **Enable growbox silent mode** or **Disable growbox silent mode** in the Control tab to toggle the device's silent schedule through its settings API. The growbox applies silent operation during the configured silent hours. The local PID uses the device's reported active state to select Day silent or Night silent fan limits.
 
 ## Python client
 

@@ -33,12 +33,10 @@ class FanPidController:
         device_url: str,
         store: ConfigStore,
         client_factory: Optional[Callable[[], LisaProClient]] = None,
-        silent_mode_override_provider: Optional[Callable[[], Optional[bool]]] = None,
     ) -> None:
         self.device_url = device_url.rstrip("/")
         self.store = store
         self._client_factory = client_factory or (lambda: LisaProClient(self.device_url))
-        self._silent_mode_override_provider = silent_mode_override_provider or (lambda: None)
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -130,11 +128,6 @@ class FanPidController:
             phases = phases_resp.get("phases") if isinstance(phases_resp, dict) else phases_resp
             if not isinstance(phases, list):
                 phases = []
-
-        silent_override = self._silent_mode_override_provider()
-        if silent_override is not None:
-            silent = status.get("silent") if isinstance(status.get("silent"), dict) else {}
-            status["silent"] = {**silent, "active": silent_override}
 
         self.store.ensure_fan_limits_from_phases(phases)
         cfg = self.store.get()

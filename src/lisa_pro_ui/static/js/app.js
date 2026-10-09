@@ -10,7 +10,7 @@
     controlHydrated: false,
     startDirty: false,
     dayDirty: false,
-    silentOverride: null,
+    silentEnabled: false,
   };
 
   const MODE_LABELS = {
@@ -355,13 +355,11 @@
 
   function updateControlLive(st, enabled) {
     $("pidMode").textContent = MODE_LABELS[st.mode] || (st.mode || "—").replace(/_/g, " ");
-    const scheduledSilent = st.mode === "day_silent" || st.mode === "night_silent";
-    const silentActive = state.silentOverride == null ? scheduledSilent : state.silentOverride;
     const silentButton = $("btnSilentToggle");
-    silentButton.textContent = silentActive ? "Disable silent mode" : "Enable silent mode";
-    silentButton.setAttribute("aria-pressed", String(silentActive));
-    silentButton.classList.toggle("primary", silentActive);
-    silentButton.classList.toggle("ghost", !silentActive);
+    silentButton.textContent = state.silentEnabled ? "Disable growbox silent mode" : "Enable growbox silent mode";
+    silentButton.setAttribute("aria-pressed", String(state.silentEnabled));
+    silentButton.classList.toggle("primary", state.silentEnabled);
+    silentButton.classList.toggle("ghost", !state.silentEnabled);
     const fanBand = `(${fmt0(st.fan_min_limit)}–${fmt0(st.fan_max_limit)})`;
     if (st.reason === "ramping" && st.fan_command != null && st.fan_ramp_target != null) {
       $("pidCmd").textContent = `${fmt0(st.fan_command)}% → ${fmt0(st.fan_ramp_target)}% target ${fanBand}`;
@@ -810,15 +808,6 @@
     }
   }
 
-  async function refreshSilentOverride() {
-    try {
-      const result = await api("/api/silent-override");
-      state.silentOverride = result.active;
-    } catch (err) {
-      console.error(err);
-    }
-  }
-
   function hhmm(h, m) {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   }
@@ -842,6 +831,7 @@
       if (info.seed) $("seedInput").value = info.seed;
 
       $("silentEnabled").checked = !!silent.enabled;
+      state.silentEnabled = !!silent.enabled;
       $("silentStart").value = hhmm(silent.startH, silent.startM);
       $("silentEnd").value = hhmm(silent.endH, silent.endM);
       $("silentFExhMin").value = silent.fanExhaustMin;
@@ -949,6 +939,8 @@
         }),
       });
       toast("Silent settings saved");
+      state.silentEnabled = $("silentEnabled").checked;
+      updateControlLive((state.control && state.control.state) || {}, state.control && state.control.config && state.control.config.enabled);
     });
   });
 
@@ -1076,16 +1068,14 @@
 
   $("btnSilentToggle").addEventListener("click", () =>
     withBusy(async () => {
-      const st = (state.control && state.control.state) || {};
-      const scheduledSilent = st.mode === "day_silent" || st.mode === "night_silent";
-      const currentlySilent = state.silentOverride == null ? scheduledSilent : state.silentOverride;
-      const result = await api("/api/silent-override", {
+      const result = await api("/api/proxy/silent/toggle", {
         method: "POST",
-        body: JSON.stringify({ active: !currentlySilent }),
+        body: "{}",
       });
-      state.silentOverride = result.active;
-      updateControlLive(st, state.control && state.control.config && state.control.config.enabled);
-      toast(result.active ? "Silent mode enabled" : "Silent mode disabled");
+      state.silentEnabled = !!result.enabled;
+      $("silentEnabled").checked = state.silentEnabled;
+      updateControlLive((state.control && state.control.state) || {}, state.control && state.control.config && state.control.config.enabled);
+      toast(state.silentEnabled ? "Growbox silent schedule enabled" : "Growbox silent schedule disabled");
       await refreshControl();
       await refreshStatus();
     })
@@ -1119,7 +1109,6 @@
       const meta = await api("/api/meta");
       if (meta.device_url) $("deviceUrl").textContent = meta.device_url;
     } catch (_) {}
-    await refreshSilentOverride();
     await refreshStatus();
     await loadSettings();
     setInterval(refreshStatus, 2500);
