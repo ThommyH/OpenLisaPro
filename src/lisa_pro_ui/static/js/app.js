@@ -118,6 +118,15 @@
     return svp * (1 - h / 100);
   }
 
+  function calcDewPoint(tempC, rh) {
+    if (tempC == null || rh == null || !Number.isFinite(+tempC) || !Number.isFinite(+rh)) return null;
+    const temp = Number(tempC);
+    const humidity = Math.max(0, Math.min(100, Number(rh)));
+    if (humidity === 0) return null;
+    const alpha = Math.log(humidity / 100) + (17.27 * temp) / (237.7 + temp);
+    return (237.7 * alpha) / (17.27 - alpha);
+  }
+
   function updateHero(s) {
     const growOn = !!(s.grow && s.grow.started);
     const dryOn = !!(s.drying && s.drying.active);
@@ -216,6 +225,10 @@
   function updateClimate(s, ctrlState) {
     $("tempIn").textContent = s.temp_c == null ? "—" : `${fmt0(s.temp_c)}°C`;
     $("humiIn").textContent = s.humi_rh == null ? "—" : `${fmt0(s.humi_rh)}%`;
+    const dewIn = s.dew_c != null ? s.dew_c : calcDewPoint(s.temp_c, s.humi_rh);
+    const dewOut = s.dew_out_c != null ? s.dew_out_c : calcDewPoint(s.temp_out_c, s.humi_out_rh);
+    $("dewIn").textContent = dewIn == null ? "—" : `${fmt1(dewIn)}°C`;
+    $("dewOut").textContent = dewOut == null ? "—" : `${fmt1(dewOut)}°C`;
     const vpdIn = s.vpd_kpa != null ? s.vpd_kpa : calcVpd(s.temp_c, s.humi_rh);
     const vpdOut =
       (ctrlState && ctrlState.vpd_outside) != null
