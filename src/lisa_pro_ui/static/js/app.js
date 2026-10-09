@@ -10,19 +10,22 @@
     controlHydrated: false,
     startDirty: false,
     dayDirty: false,
+    silentOverride: null,
   };
 
   const MODE_LABELS = {
     day: "Day",
+    day_silent: "Day silent",
     night: "Night",
-    night_silent: "Silent",
+    night_silent: "Night silent",
   };
 
   const PID_REASON_LABELS = {
     target_limited_by_outside_dew_point: "Outside-air limited",
-    throttling_unreachable: "Backing off · VPD not improving",
+    throttling_unreachable: "Backing off · target unreachable",
+    no_inside_vpd: "Missing inside VPD",
   };
-  const MODES = ["day", "night", "night_silent"];
+  const MODES = ["day", "day_silent", "night", "night_silent"];
   const LED_MODES = ["day", "night"];
 
   const CHART_SERIES = [
@@ -351,7 +354,14 @@
   }
 
   function updateControlLive(st, enabled) {
-    $("pidMode").textContent = st.mode || "—";
+    $("pidMode").textContent = MODE_LABELS[st.mode] || (st.mode || "—").replace(/_/g, " ");
+    const scheduledSilent = st.mode === "day_silent" || st.mode === "night_silent";
+    const silentActive = state.silentOverride == null ? scheduledSilent : state.silentOverride;
+    const silentButton = $("btnSilentToggle");
+    silentButton.textContent = silentActive ? "Disable silent mode" : "Enable silent mode";
+    silentButton.setAttribute("aria-pressed", String(silentActive));
+    silentButton.classList.toggle("primary", silentActive);
+    silentButton.classList.toggle("ghost", !silentActive);
     const fanBand = `(${fmt0(st.fan_min_limit)}–${fmt0(st.fan_max_limit)})`;
     if (st.reason === "ramping" && st.fan_command != null && st.fan_ramp_target != null) {
       $("pidCmd").textContent = `${fmt0(st.fan_command)}% → ${fmt0(st.fan_ramp_target)}% target ${fanBand}`;
@@ -361,11 +371,11 @@
     }
     const error = Number(st.pid_error);
     $("pidErr").textContent = st.pid_error == null ? "—" : `${error > 0 ? "+" : ""}${error.toFixed(3)} kPa`;
-    $("pidReason").textContent = PID_REASON_LABELS[st.reason] || st.reason || "—";
+    $("pidReason").textContent = PID_REASON_LABELS[st.reason] || (st.reason || "—").replace(/_/g, " ");
     $("pidReason").title = st.reason === "target_limited_by_outside_dew_point"
       ? "Outside air is too moist to reach the selected VPD target using ventilation alone."
       : st.reason === "throttling_unreachable"
-        ? "VPD did not improve while the fan was at its upper limit, so the controller is reducing fan speed."
+        ? "The target is outside the estimated ventilation limit, or VPD did not improve after a fan command reached its upper limit. The controller is stepping fan speed down; it may not have reached the ceiling in the outside-air-limited case."
         : "";
     $("pidStatus").classList.toggle("throttling", !!st.throttling);
     $("pidStatus").classList.toggle("active", !!enabled);
@@ -800,6 +810,15 @@
     }
   }
 
+  async function refreshSilentOverride() {
+    try {
+      const result = await api("/api/silent-override");
+      state.silentOverride = result.active;
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
   function hhmm(h, m) {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
   }
@@ -1055,6 +1074,23 @@
     })
   );
 
+  $("btnSilentToggle").addEventListener("click", () =>
+    withBusy(async () => {
+      const st = (state.control && state.control.state) || {};
+      const scheduledSilent = st.mode === "day_silent" || st.mode === "night_silent";
+      const currentlySilent = state.silentOverride == null ? scheduledSilent : state.silentOverride;
+      const result = await api("/api/silent-override", {
+        method: "POST",
+        body: JSON.stringify({ active: !currentlySilent }),
+      });
+      state.silentOverride = result.active;
+      updateControlLive(st, state.control && state.control.config && state.control.config.enabled);
+      toast(result.active ? "Silent mode enabled" : "Silent mode disabled");
+      await refreshControl();
+      await refreshStatus();
+    })
+  );
+
   $("controlForm").addEventListener("submit", (ev) => {
     ev.preventDefault();
     $("btnControlSave").click();
@@ -1083,6 +1119,7 @@
       const meta = await api("/api/meta");
       if (meta.device_url) $("deviceUrl").textContent = meta.device_url;
     } catch (_) {}
+    await refreshSilentOverride();
     await refreshStatus();
     await loadSettings();
     setInterval(refreshStatus, 2500);

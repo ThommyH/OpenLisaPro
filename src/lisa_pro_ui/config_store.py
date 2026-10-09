@@ -8,7 +8,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-MODES = ("day", "night", "night_silent")
+MODES = ("day", "day_silent", "night", "night_silent")
 LED_MODES = ("day", "night")  # UI focuses on day/night LED
 
 DEFAULT_PID = {
@@ -112,11 +112,13 @@ class ConfigStore:
                 led_bucket = led.setdefault(phase_id, {})
                 vpd_bucket = vpd.setdefault(phase_id, {})
                 for mode in MODES:
-                    m = settings.get(mode) or {}
+                    source_mode = "day" if mode == "day_silent" else mode
+                    m = settings.get(mode) or settings.get(source_mode) or {}
                     if mode not in bucket:
+                        source_limits = bucket.get(source_mode) or {}
                         bucket[mode] = {
-                            "fan_min": float(m.get("fan_min", 20)),
-                            "fan_max": float(m.get("fan_max", 80)),
+                            "fan_min": float(source_limits.get("fan_min", m.get("fan_min", 20))),
+                            "fan_max": float(source_limits.get("fan_max", m.get("fan_max", 80))),
                         }
                         changed = True
                     if mode not in vpd_bucket:
@@ -126,8 +128,9 @@ class ConfigStore:
                                 "vpd_max": float(legacy["vpd_max"]),
                             }
                         else:
-                            lo = float(m.get("vpd_min", 0.8))
-                            hi = float(m.get("vpd_max", 1.2))
+                            source_targets = vpd_bucket.get(source_mode) or {}
+                            lo = float(source_targets.get("vpd_min", m.get("vpd_min", 0.8)))
+                            hi = float(source_targets.get("vpd_max", m.get("vpd_max", 1.2)))
                             if lo > hi:
                                 lo, hi = hi, lo
                             vpd_bucket[mode] = {"vpd_min": lo, "vpd_max": hi}

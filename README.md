@@ -7,7 +7,7 @@ The web app runs on your own computer or server. It talks to the growbox over it
 ## What it does
 
 - Shows inside and outside temperature, relative humidity, dew point, and VPD, along with the current grow stage and device status.
-- Lets you manage stage-specific VPD targets, fan limits, LED levels, and light-on/light-off schedules for day and night modes.
+- Lets you manage stage-specific VPD targets, fan limits, LED levels, and light-on/light-off schedules for day, Day silent, night, and Night silent modes.
 - Runs an optional local PID controller for exhaust fan speed. It uses inside VPD as the control goal, estimates the ventilation limit from outside dew point at inside temperature, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
 - Displays the controller's current mode, status, and ramp target, with an expandable explanation of the calculation and its states.
 - Provides a chart of recent climate and fan history, and controls for growbox settings such as silent operation, door actions, and MQTT.
@@ -74,6 +74,8 @@ Inside VPD remains the PID control goal because it reflects the current conditio
 For example, outside air at 22°C and 59% RH has a dew point near 13.6°C. At an inside temperature of 23°C, that moisture level corresponds to about 1.25 kPa VPD. A requested target of 1.50 kPa is therefore limited to about 1.25 kPa for ventilation control. This is an estimate of what ventilation alone can achieve; moisture produced inside the grow space can reduce the actual result.
 
 The **Reset defaults** action restores local control defaults and the growbox's factory phase presets. Stage and device settings may be written to the connected hardware when you save or reset them.
+
+Use **Enable silent mode** or **Disable silent mode** in the Control tab to immediately override the scheduled silent setting for local fan control. The override remains until toggled again or the app restarts. PID must be enabled for the local controller to apply the selected silent fan limits.
 
 ## Python client
 

@@ -172,6 +172,7 @@
               <input type="checkbox" id="pidEnabled" />
               PID enabled
             </label>
+            <button type="button" class="btn ghost small" id="btnSilentToggle" aria-pressed="false" title="Temporarily override scheduled silent mode for the local fan controller. This override resets when the app restarts.">Enable silent mode</button>
             <button type="button" class="btn ghost small" id="btnControlReset">Reset defaults</button>
             <button type="button" class="btn primary small" id="btnControlSave">Save</button>
           </div>
@@ -182,7 +183,7 @@
           <div class="fan-flowchart" aria-label="Fan speed calculation flowchart">
             <div class="flow-node">
               <span class="flow-index">1</span>
-              <div><strong>Resolve stage and mode</strong><span>Use the active grow stage. Its Lights on/off times determine Day or Night; Silent applies during the night interval.</span></div>
+              <div><strong>Resolve stage and mode</strong><span>Use the active grow stage and its lights-on/off times. If device Silent mode is active, use Day silent during the day interval or Night silent during the night interval.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-decision"><strong>Is local fan PID enabled?</strong></div>
@@ -215,7 +216,7 @@
             <div class="flow-arrow" aria-hidden="true">↓ <span>requested speed</span></div>
             <div class="flow-node">
               <span class="flow-index">4</span>
-              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If the fan is at its ceiling and a large VPD error is not improving for the hold time, the unreachable safeguard steps it down.</span></div>
+              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If outside dew point makes the target unreachable, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps. The outside-air limit can trigger a back-off before the fan reaches its ceiling.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-node flow-result">
@@ -236,16 +237,17 @@
               <div><dt>Outside-air limited</dt><dd>Outside air is too moist for ventilation alone to reach the selected VPD target. The controller uses the lower estimated ventilation limit.</dd></div>
               <div><dt>applied</dt><dd>A new fan command was sent to the growbox.</dd></div>
               <div><dt>ramping</dt><dd>The fan command is moving gradually toward the requested speed at the configured ramp rate.</dd></div>
-              <div><dt>no_inside_vpd</dt><dd>No valid inside VPD reading is available. The existing device setting is left in place while the controller retries.</dd></div>
-              <div><dt>Backing off · VPD not improving</dt><dd>The fan reached its upper limit and VPD did not improve during the hold time, so the controller is stepping the fan down.</dd></div>
+              <div><dt>Missing inside VPD</dt><dd>No valid inside VPD reading is available. The existing device setting is left in place while the controller retries.</dd></div>
+              <div><dt>Backing off · target unreachable</dt><dd>The target is above the estimated ventilation limit, or VPD failed to improve after the fan reached its upper limit for the hold time. The controller steps the fan down; an outside-air limit can trigger this before the fan reaches its ceiling.</dd></div>
               <div><dt>error</dt><dd>A control cycle failed. The controller logs the error and retries on its next cycle.</dd></div>
             </dl>
 
             <h3>Mode</h3>
             <dl class="controller-state-list">
-              <div><dt>day</dt><dd>Current time is inside the active stage’s Lights on to Lights off interval.</dd></div>
-              <div><dt>night</dt><dd>Current time is outside that stage’s light interval.</dd></div>
-              <div><dt>night_silent</dt><dd>It is outside the light interval and the device’s silent mode is active.</dd></div>
+              <div><dt>Day</dt><dd>Current time is inside the active stage’s lights-on to lights-off interval, and device Silent mode is inactive.</dd></div>
+              <div><dt>Night</dt><dd>Current time is outside that stage’s light interval, and device Silent mode is inactive.</dd></div>
+              <div><dt>Day silent</dt><dd>It is within the lights-on/off interval and device Silent mode is active.</dd></div>
+              <div><dt>Night silent</dt><dd>It is outside the lights-on/off interval and device Silent mode is active.</dd></div>
             </dl>
           </div>
         </details>
