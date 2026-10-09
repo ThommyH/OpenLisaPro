@@ -7,6 +7,7 @@ import threading
 import time
 from collections import deque
 from copy import deepcopy
+from datetime import datetime, time as datetime_time
 from typing import Any, Callable, Optional
 
 from lisa_pro_ui.client import LisaProClient, LisaProError
@@ -131,7 +132,7 @@ class FanPidController:
         cfg = self.store.get()
 
         phase, phase_id = self._resolve_phase(status, phases)
-        mode = self._resolve_mode(status)
+        mode = self._resolve_mode(status, phase)
         pid_cfg = dict(cfg.get("pid") or {})
         if self._active_key is None or self._active_key[0] != int(phase_id):
             self._pid.reset()
@@ -234,7 +235,7 @@ class FanPidController:
         error = target - float(vpd_inside)
         pid_out = self._pid.update(error, now, deadband=deadband)
         # Positive error (need higher VPD) → higher exhaust within [fan_min, fan_max].
-        desired = self._map_pid_to_fan(pid_out, fan_min, fan_max, error)
+        desired = self._map_pid_to_fan(pid_out, fan_min, fan_max, error, deadband=deadband)
 
         # Unreachable / stuck at ceiling → throttle down.
         throttling = False
@@ -333,18 +334,25 @@ class FanPidController:
         return interval
 
     @staticmethod
-    def _map_pid_to_fan(pid_out: float, fan_min: float, fan_max: float, error: float) -> float:
-        """Map PID output (%-points around mid-band) into [fan_min, fan_max].
+    def _map_pid_to_fan(
+        pid_out: float,
+        fan_min: float,
+        fan_max: float,
+        error: float,
+        *,
+        deadband: float = 0.0,
+    ) -> float:
+        """Start at the configured minimum and add exhaust only when VPD needs it.
 
-        With default Kp≈35, a +0.2 kPa error yields ~+7% from mid, then integral climbs.
-        Positive error (need higher VPD) → higher exhaust.
+        Positive PID output means inside VPD is below target, so more exhaust is
+        requested. Zero or negative output stays at the minimum fan limit.
         """
-        del error  # sign is already in pid_out
+        if error <= deadband:
+            return fan_min
         span = max(0.0, fan_max - fan_min)
         if span <= 0:
             return fan_min
-        mid = fan_min + span / 2.0
-        return max(fan_min, min(fan_max, mid + pid_out))
+        return max(fan_min, min(fan_max, fan_min + max(0.0, pid_out)))
 
     def _apply_fan_command(
         self,
@@ -403,13 +411,55 @@ class FanPidController:
         )
 
     @staticmethod
-    def _resolve_mode(status: dict[str, Any]) -> str:
+    def _resolve_mode(
+        status: dict[str, Any],
+        phase: Optional[dict[str, Any]] = None,
+        *,
+        now: Optional[datetime] = None,
+    ) -> str:
         silent = status.get("silent") or {}
-        if status.get("light_on"):
+        schedule = (phase or {}).get("schedule") or {}
+        start = FanPidController._parse_clock_time(schedule.get("on"))
+        end = FanPidController._parse_clock_time(schedule.get("off"))
+        current = now
+        if current is None:
+            ntp_time = status.get("ntp_time")
+            if isinstance(ntp_time, str):
+                for fmt in ("%d.%m.%y %H:%M:%S", "%Y-%m-%d %H:%M:%S", "%H:%M:%S"):
+                    try:
+                        current = datetime.strptime(ntp_time, fmt)
+                        break
+                    except ValueError:
+                        continue
+            current = current or datetime.now()
+
+        if start is not None and end is not None:
+            clock = current.time()
+            if start == end:
+                is_day = True
+            elif start < end:
+                is_day = start <= clock < end
+            else:
+                # Light schedules often cross midnight (for example, 21:00–11:00).
+                is_day = clock >= start or clock < end
+        else:
+            # Older devices may omit schedules; retain their reported light state.
+            is_day = bool(status.get("light_on"))
+
+        if is_day:
             return "day"
         if silent.get("active"):
             return "night_silent"
         return "night"
+
+    @staticmethod
+    def _parse_clock_time(value: Any) -> Optional[datetime_time]:
+        if not isinstance(value, str):
+            return None
+        try:
+            return datetime.strptime(value, "%H:%M").time()
+        except ValueError:
+            return None
 
     @staticmethod
     def _resolve_phase(

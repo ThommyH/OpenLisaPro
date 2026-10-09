@@ -169,8 +169,19 @@
         </div>
 
         <form id="controlForm" class="control-form">
-          <fieldset class="control-card">
-            <legend>Global PID</legend>
+          <div class="fan-limits">
+            <div class="phases-head compact">
+              <div>
+                <h3 class="section-title sm">Stage climate</h3>
+                <p class="hero-sub phases-sub">Set each stage’s light on/off times, VPD targets, fan limits, and day/night LED %.</p>
+              </div>
+              <button type="button" class="btn ghost small" id="btnSeedFans">Seed from device</button>
+            </div>
+            <div id="fanLimitsRoot" class="stage-grid"></div>
+          </div>
+
+          <details class="pid-settings">
+            <summary>Global PID settings</summary>
             <div class="phase-grid pid-grid">
               <label>Kp <input class="mono" type="number" step="0.1" id="pidKp" /></label>
               <label>Ki <input class="mono" type="number" step="0.01" id="pidKi" /></label>
@@ -179,18 +190,7 @@
               <label>Interval s <input class="mono" type="number" step="0.5" id="pidInterval" /></label>
               <label>Deadband <input class="mono" type="number" step="0.01" id="pidDeadband" /></label>
             </div>
-          </fieldset>
-
-          <div class="fan-limits">
-            <div class="phases-head compact">
-              <div>
-                <h3 class="section-title sm">Stage climate</h3>
-                <p class="hero-sub phases-sub">VPD target band and fan limits per stage, plus day/night LED %.</p>
-              </div>
-              <button type="button" class="btn ghost small" id="btnSeedFans">Seed from device</button>
-            </div>
-            <div id="fanLimitsRoot" class="stage-grid"></div>
-          </div>
+          </details>
         </form>
       </section>
 

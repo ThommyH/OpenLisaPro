@@ -102,9 +102,54 @@ def create_app(
                 values.extend(float(v) for v in modes.values() if str(v).strip())
         return max(values, default=0.0)
 
+    def _validate_phase_schedules(schedule_map) -> None:
+        if schedule_map is None:
+            return
+        if not isinstance(schedule_map, dict):
+            raise ValueError("phase_schedules must be an object")
+        for phase_id, schedule in schedule_map.items():
+            if not isinstance(schedule, dict):
+                raise ValueError(f"Invalid schedule for phase {phase_id}")
+            for field in ("on", "off"):
+                if field not in schedule:
+                    continue
+                value = str(schedule[field])
+                parts = value.split(":")
+                if len(parts) != 2 or any(len(part) != 2 or not part.isdigit() for part in parts):
+                    raise ValueError(f"Invalid light {field} time: {value}")
+                hour, minute = map(int, parts)
+                if hour > 23 or minute > 59:
+                    raise ValueError(f"Invalid light {field} time: {value}")
+
+    def _apply_phase_schedules(schedule_map: dict) -> None:
+        """Update per-phase light on/off times without replacing other phase settings."""
+        if not isinstance(schedule_map, dict) or not schedule_map:
+            return
+        with client() as c:
+            phases = c.get_phases().get("phases") or []
+            changed = False
+            for phase in phases:
+                schedule_patch = schedule_map.get(str(phase.get("id", 0)))
+                if not isinstance(schedule_patch, dict):
+                    continue
+                schedule = phase.setdefault("schedule", {})
+                for field in ("on", "off"):
+                    if field not in schedule_patch:
+                        continue
+                    value = str(schedule_patch[field])
+                    if schedule.get(field) != value:
+                        schedule[field] = value
+                        changed = True
+            if changed:
+                c.set_phases({"phases": phases})
+
     @app.post("/api/control")
     def control_post():
         body = request.get_json(force=True, silent=True) or {}
+        try:
+            _validate_phase_schedules(body.get("phase_schedules"))
+        except Exception as exc:
+            return _err(exc, 400)
         try:
             cfg = store.update(body)
         except Exception as exc:
@@ -116,6 +161,12 @@ def create_app(
                 _apply_led_to_device(cfg.get("led") or {}, float(pct))
             except Exception as exc:  # noqa: BLE001 — local save should still succeed
                 led_error = str(exc)
+        schedule_error = None
+        if "phase_schedules" in body:
+            try:
+                _apply_phase_schedules(body.get("phase_schedules") or {})
+            except Exception as exc:  # noqa: BLE001 — local control save should still succeed
+                schedule_error = str(exc)
         payload = {
             "ok": True,
             "config": cfg,
@@ -124,6 +175,8 @@ def create_app(
         }
         if led_error:
             payload["led_error"] = led_error
+        if schedule_error:
+            payload["schedule_error"] = schedule_error
         return jsonify(payload)
 
     @app.post("/api/control/seed-fans")

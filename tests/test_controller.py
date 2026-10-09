@@ -74,8 +74,9 @@ def test_fan_limits_fallback_to_device():
     assert lim == {"fan_min": 21.0, "fan_max": 66.0}
 
 
-def test_map_pid_to_fan_clamps_to_band():
-    assert FanPidController._map_pid_to_fan(0, 20, 80, 0) == 50
+def test_map_pid_to_fan_prefers_minimum_until_more_fan_is_needed():
+    assert FanPidController._map_pid_to_fan(0, 20, 80, 0) == 20
+    assert FanPidController._map_pid_to_fan(10, 20, 80, 1) == 30
     assert FanPidController._map_pid_to_fan(100, 20, 80, 1) == 80
     assert FanPidController._map_pid_to_fan(-100, 20, 80, -1) == 20
     assert FanPidController._map_pid_to_fan(10, 40, 40, 1) == 40

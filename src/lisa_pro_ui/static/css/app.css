@@ -18,15 +18,15 @@
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
-/* "Daylight" — bright background while any LED is lit (pct > 0); dark when fully off. */
-body.lights-on {
+/* Slightly brighter theme during the configured light-on interval. */
+body.day-mode {
   --bg-0: #0b1b14;
   --bg-1: #10251b;
   --ink: #eef7f0;
   --ink-dim: #a7bdad;
   --line: rgba(238, 247, 240, 0.16);
   --glass: rgba(16, 37, 27, 0.62);
-  /* Deepened accents so text and status dots stay readable on the light background. */
+  /* Daytime accents retain contrast against the dark green background. */
   --leaf: #3f9e14;
   --leaf-deep: #368a12;
   --amber: #dd8500;
@@ -80,8 +80,8 @@ body {
     linear-gradient(180deg, #082016 0%, var(--bg-0) 45%, #040d0a 100%);
 }
 
-/* Daylight variant of the backdrop while any LED is lit. */
-body.lights-on .atmosphere {
+/* Daytime backdrop follows the phase schedule, not the physical LED state. */
+body.day-mode .atmosphere {
   background:
     radial-gradient(1200px 700px at 15% -10%, rgba(184, 242, 85, 0.1), transparent 55%),
     radial-gradient(900px 600px at 85% 10%, rgba(255, 184, 77, 0.08), transparent 50%),
@@ -841,6 +841,32 @@ input:focus {
   font-weight: 600;
 }
 
+.pid-settings {
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--line);
+}
+
+.pid-settings summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.pid-settings summary::-webkit-details-marker { display: none; }
+.pid-settings summary::after { content: "+"; color: var(--leaf); font-size: 1.2rem; }
+.pid-settings[open] summary::after { content: "−"; }
+
+.pid-settings .pid-grid {
+  margin-top: 0.85rem;
+}
+
 .pid-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
@@ -897,6 +923,23 @@ input:focus {
 .stage-mode-row {
   display: grid;
   gap: 0.35rem;
+}
+
+.phase-schedule {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.55rem 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: var(--glass);
+}
+
+.phase-schedule p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.78rem;
 }
 
 .stage-mode-controls {

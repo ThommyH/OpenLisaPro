@@ -142,7 +142,7 @@
     btnDry.classList.toggle("danger", dryOn);
   }
 
-  function updateCurrentStageCard() {
+  function currentStagePhase() {
     const grow = state.status && state.status.grow;
     const currentStage = grow && grow.started ? grow.phase : null;
     const normalized = (value) => String(value ?? "")
@@ -150,10 +150,9 @@
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase();
     const phaseText = normalized(currentStage);
-    let currentId = null;
 
     if (phaseText) {
-      const phase = state.phases.find((item) => {
+      return state.phases.find((item) => {
         const id = String(item.id ?? 0);
         const name = normalized(item.name);
         if (phaseText === id || (name && (phaseText === name || phaseText.includes(name) || name.includes(phaseText)))) {
@@ -168,9 +167,35 @@
           aliases[group].some((alias) => phaseText.includes(alias)),
         );
         return !!key && aliases[key].some((alias) => name.includes(alias));
-      });
-      if (phase) currentId = String(phase.id ?? 0);
+      }) || null;
     }
+    return null;
+  }
+
+  function updateDayTheme(phase) {
+    const schedule = (phase && phase.schedule) || {};
+    const parseMinutes = (value) => {
+      const match = typeof value === "string" && value.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
+      return match ? Number(match[1]) * 60 + Number(match[2]) : null;
+    };
+    const start = parseMinutes(schedule.on);
+    const end = parseMinutes(schedule.off);
+    let isDay;
+
+    if (start != null && end != null) {
+      const timeMatch = String((state.status && state.status.ntp_time) || "").match(/(\d{2}):(\d{2})(?::\d{2})?$/);
+      const browserTime = new Date();
+      const now = timeMatch ? Number(timeMatch[1]) * 60 + Number(timeMatch[2]) : browserTime.getHours() * 60 + browserTime.getMinutes();
+      isDay = start === end || (start < end ? now >= start && now < end : now >= start || now < end);
+    } else {
+      isDay = !!(state.status && state.status.light_on);
+    }
+    document.body.classList.toggle("day-mode", isDay);
+  }
+
+  function updateCurrentStageCard() {
+    const phase = currentStagePhase();
+    const currentId = phase ? String(phase.id ?? 0) : null;
 
     document.querySelectorAll("#fanLimitsRoot .stage-card").forEach((card) => {
       const isCurrent = card.dataset.phaseId === currentId;
@@ -185,6 +210,7 @@
         badge.remove();
       }
     });
+    updateDayTheme(phase);
   }
 
   function updateClimate(s, ctrlState) {
@@ -207,8 +233,6 @@
   function updateActuators(s) {
     $("lightVal").textContent = `${fmt1(s.light_pct)}% ${s.light_on ? "ON" : "OFF"}`;
     setBar("lightBar", s.light_pct);
-    // Bright "daylight" background while the LEDs are actually emitting
-    // light (on and above 0%), dark ambient theme otherwise.
     document.body.classList.toggle(
       "lights-on",
       !!s.light_on && (s.light_pct ?? 0) > 0,
@@ -451,6 +475,9 @@
       const card = document.createElement("article");
       card.className = "stage-card";
       card.dataset.phaseId = id;
+      const schedule = phase.schedule || {};
+      const scheduleTime = (value, fallback) =>
+        typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback;
       const rows = MODES.map((mode) => {
         const lim = (limits[id] && limits[id][mode]) || {};
         const vpd = (vpdMap[id] && vpdMap[id][mode]) || {};
@@ -510,6 +537,15 @@
           <h3>${phase.name || `Phase ${id}`}</h3>
           <span class="phase-id mono">id ${id}</span>
         </div>
+        <div class="phase-schedule">
+          <label>Lights on
+            <input type="time" value="${scheduleTime(schedule.on, "06:00")}" data-schedule-phase="${id}" data-schedule-field="on" />
+          </label>
+          <label>Lights off
+            <input type="time" value="${scheduleTime(schedule.off, "00:00")}" data-schedule-phase="${id}" data-schedule-field="off" />
+          </label>
+          <p>Day runs from lights on to lights off, including overnight schedules.</p>
+        </div>
         ${rows}`;
       root.appendChild(card);
     });
@@ -557,6 +593,17 @@
     return out;
   }
 
+  function collectPhaseSchedules() {
+    const out = {};
+    document.querySelectorAll("#fanLimitsRoot input[data-schedule-phase]").forEach((el) => {
+      const phaseId = el.dataset.schedulePhase;
+      const field = el.dataset.scheduleField;
+      out[phaseId] = out[phaseId] || {};
+      out[phaseId][field] = el.value;
+    });
+    return out;
+  }
+
   function collectControlPayload() {
     return {
       enabled: $("pidEnabled").checked,
@@ -571,6 +618,7 @@
       },
       fan_limits: collectFanLimits(),
       led: collectLed(),
+      phase_schedules: collectPhaseSchedules(),
     };
   }
 
@@ -898,6 +946,12 @@
   $("btnControlSave").addEventListener("click", () =>
     withBusy(async () => {
       const payload = collectControlPayload();
+      for (const [phaseId, schedule] of Object.entries(payload.phase_schedules)) {
+        if (!schedule.on || !schedule.off) {
+          toast(`Phase ${phaseId}: set both lights-on and lights-off times`);
+          return;
+        }
+      }
       for (const [phaseId, modes] of Object.entries(payload.vpd_targets)) {
         for (const [mode, lim] of Object.entries(modes)) {
           if (lim.vpd_min > lim.vpd_max) {
@@ -918,10 +972,14 @@
         method: "POST",
         body: JSON.stringify(payload),
       });
+      Object.entries(payload.phase_schedules).forEach(([phaseId, schedule]) => {
+        const phase = state.phases.find((item) => String(item.id ?? 0) === phaseId);
+        if (phase) phase.schedule = { ...(phase.schedule || {}), ...schedule };
+      });
       state.controlDirty = false;
       state.controlHydrated = false;
       renderControl({ config: res.config, state: res.state, history: state.history }, { forceForm: true });
-      toast("Control settings saved");
+      toast(res.schedule_error ? `Settings saved; schedule update failed: ${res.schedule_error}` : "Control settings saved");
     })
   );
 

@@ -29,6 +29,7 @@ OpenLisaPro is a Python 3.9+ Flask control panel and Python HTTP client for the 
 - Build app-dependent behavior through `create_app` and its injected device URL, data directory, and controller start option. Tests use Flask's test client and temporary directories rather than a live device.
 - Protect shared controller/config state with locks and return deep copies from persisted/snapshot data paths. Keep the PID loop resilient to individual tick failures.
 - Normalize user/device values at the config boundary: phase/mode maps use string phase IDs and `day`, `night`, `night_silent`; fan and LED percentages are bounded to 0–100; VPD ranges are bounded and ordered.
+- Day/night mode follows the active phase's scheduled `on`/`off` times (including schedules that cross midnight); silent mode is selected only during the night interval.
 - When adding or changing device routes, consult/update `openapi.yaml` as appropriate and use `examples/` for representative payload shapes.
 - The browser UI talks to the Flask `/api/*` routes, not directly to the growbox. Keep template element IDs, JavaScript selectors, and API payload shapes in sync.
 - No formatter or linter is configured in `pyproject.toml`; follow the existing Python style and keep changes focused.
