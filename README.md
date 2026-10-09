@@ -15,6 +15,14 @@ The web app runs on your own computer or server. It talks to the growbox over it
 
 The UI can be viewed on desktop or mobile. The PID loop can write fan settings to the connected device when enabled, so use the controller settings deliberately.
 
+## Screenshots
+
+These screenshots use representative sample data and show the dashboard at desktop and mobile widths.
+
+![OpenLisaPro dashboard at desktop width](docs/screenshots/dashboard-desktop.png)
+
+![OpenLisaPro dashboard at mobile width](docs/screenshots/dashboard-mobile.png)
+
 ## Requirements
 
 - Python 3.9 or newer
