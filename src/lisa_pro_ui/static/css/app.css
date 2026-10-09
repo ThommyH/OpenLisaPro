@@ -811,6 +811,169 @@ input:focus {
   gap: 0.85rem;
 }
 
+.fan-flow-details {
+  margin: 0.85rem 0;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--glass);
+}
+
+.fan-flow-details summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.8rem 1rem;
+  cursor: pointer;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  list-style: none;
+  text-transform: uppercase;
+}
+
+.fan-flow-details summary::-webkit-details-marker { display: none; }
+.fan-flow-details summary::after { content: "+"; color: var(--leaf); font-size: 1.2rem; }
+.fan-flow-details[open] summary::after { content: "−"; }
+
+.fan-flowchart {
+  display: grid;
+  justify-items: center;
+  gap: 0.45rem;
+  padding: 0.2rem 1rem 1rem;
+}
+
+.flow-node {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  width: min(100%, 44rem);
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--line);
+  border-radius: 0.8rem;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.flow-node > div,
+.flow-outcome {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.flow-node strong,
+.flow-outcome b {
+  color: var(--ink);
+  font-size: 0.9rem;
+}
+
+.flow-node span:not(.flow-index),
+.flow-outcome span {
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.flow-index {
+  display: grid;
+  flex: 0 0 1.65rem;
+  width: 1.65rem;
+  height: 1.65rem;
+  place-items: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--leaf) 16%, transparent);
+  color: var(--leaf);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.flow-arrow {
+  display: grid;
+  justify-items: center;
+  color: var(--leaf);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.flow-arrow span {
+  color: var(--ink-dim);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.flow-decision {
+  width: min(100%, 28rem);
+  padding: 0.65rem 1rem;
+  border: 1px dashed color-mix(in srgb, var(--leaf) 55%, var(--line));
+  border-radius: 0.7rem;
+  color: var(--leaf);
+  text-align: center;
+}
+
+.flow-branches {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  width: min(100%, 44rem);
+}
+
+.flow-outcome {
+  padding: 0.65rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.flow-result {
+  border-color: color-mix(in srgb, var(--leaf) 55%, var(--line));
+}
+
+.controller-state-help {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0 1rem 1rem;
+}
+
+.controller-state-help h3 {
+  margin: 0.5rem 0 0;
+  color: var(--leaf);
+  font-size: 0.76rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.controller-state-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+}
+
+.controller-state-list > div {
+  display: grid;
+  grid-template-columns: minmax(9rem, 0.35fr) 1fr;
+  gap: 0.8rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+}
+
+.controller-state-list dt {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.controller-state-list dd {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 560px) {
+  .flow-branches { grid-template-columns: 1fr; }
+  .controller-state-list > div { grid-template-columns: 1fr; gap: 0.2rem; }
+}
+
 .control-row {
   display: grid;
   grid-template-columns: minmax(12rem, 0.85fr) minmax(18rem, 1.4fr);
@@ -1124,6 +1287,28 @@ input:focus {
 }
 
 @media (max-width: 560px) {
+  main { padding-inline: 0.75rem; gap: 0.9rem; }
+  .tabs { gap: 0.25rem; }
+  .tab { flex: 1 1 0; min-height: 2.75rem; padding-inline: 0.45rem; }
+  .control-toolbar { align-items: stretch; }
+  .control-toggles { display: flex; flex-wrap: wrap; width: 100%; }
+  .control-toggles > * { flex: 1 1 auto; }
+  .btn.small { min-height: 2.75rem; }
+  .pid-status { min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
+  .pid-status > div { min-width: 0; }
+  .pid-status strong { overflow-wrap: anywhere; font-size: 0.82rem; }
+  .fan-flow-details summary { padding-inline: 0.75rem; }
+  .fan-flowchart { padding-inline: 0.65rem; }
+  .flow-node { min-width: 0; gap: 0.55rem; padding-inline: 0.65rem; }
+  .flow-node > div,
+  .flow-outcome { min-width: 0; overflow-wrap: anywhere; }
+  .controller-state-help { padding-inline: 0.65rem; }
+  .phase-schedule { padding: 0.65rem; }
+  .stage-card.is-current { padding-inline: 0.75rem; }
+  .phases-head.compact { align-items: flex-start; flex-wrap: wrap; }
+  .cluster { padding: 0.9rem; }
+  .cluster-readings { gap: 0.65rem 0.4rem; }
+  .cluster-readings .value { font-size: clamp(1.65rem, 8vw, 2.2rem); }
   .topbar { align-items: flex-start; flex-direction: column; }
   .link-status { text-align: left; }
   .climate-cols { grid-template-columns: 1fr; }
@@ -1132,4 +1317,12 @@ input:focus {
   .sys-dl { grid-template-columns: 1fr; }
   .phase-grid,
   .mode-block .phase-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 380px) {
+  main { padding-inline: 0.55rem; }
+  .phase-schedule { grid-template-columns: 1fr; }
+  .pid-status { grid-template-columns: 1fr 1fr; font-size: 0.78rem; }
+  .section-title { font-size: clamp(1.25rem, 7vw, 1.8rem); }
+  .actuators { gap: 0.55rem; }
 }

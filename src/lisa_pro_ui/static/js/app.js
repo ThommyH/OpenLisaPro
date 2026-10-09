@@ -337,8 +337,13 @@
 
   function updateControlLive(st, enabled) {
     $("pidMode").textContent = st.mode || "—";
-    $("pidCmd").textContent =
-      st.fan_command == null ? "—" : `${fmt0(st.fan_command)}% (${fmt0(st.fan_min_limit)}–${fmt0(st.fan_max_limit)})`;
+    const fanBand = `(${fmt0(st.fan_min_limit)}–${fmt0(st.fan_max_limit)})`;
+    if (st.reason === "ramping" && st.fan_command != null && st.fan_ramp_target != null) {
+      $("pidCmd").textContent = `${fmt0(st.fan_command)}% → ${fmt0(st.fan_ramp_target)}% target ${fanBand}`;
+    } else {
+      $("pidCmd").textContent =
+        st.fan_command == null ? "—" : `${fmt0(st.fan_command)}% ${fanBand}`;
+    }
     $("pidErr").textContent = st.pid_error == null ? "—" : `${Number(st.pid_error).toFixed(3)} kPa`;
     $("pidReason").textContent = st.reason || "—";
     $("pidStatus").classList.toggle("throttling", !!st.throttling);

@@ -177,6 +177,72 @@
           </div>
         </div>
 
+        <details class="fan-flow-details">
+          <summary>How fan speed is calculated</summary>
+          <div class="fan-flowchart" aria-label="Fan speed calculation flowchart">
+            <div class="flow-node">
+              <span class="flow-index">1</span>
+              <div><strong>Resolve stage and mode</strong><span>Use the active grow stage. Its Lights on/off times determine Day or Night; Silent applies during the night interval.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓</div>
+            <div class="flow-decision"><strong>Is local fan PID enabled?</strong></div>
+            <div class="flow-branches">
+              <div class="flow-outcome"><b>No</b><span>Restore the stage’s configured fan min/max band. PID does not set a fan command.</span></div>
+              <div class="flow-outcome"><b>Yes</b><span>Continue using this stage and mode’s VPD target and fan limits.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓ <span>PID enabled</span></div>
+            <div class="flow-node">
+              <span class="flow-index">2</span>
+              <div><strong>Measure inside VPD</strong><span>Calculate from inside temperature and dew point. If dew point is missing, use device VPD, then temperature and humidity. If all are missing, leave the device setting unchanged and retry next cycle.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓</div>
+            <div class="flow-node">
+              <span class="flow-index">3</span>
+              <div><strong>Choose the target and calculate error</strong><span>Target = the stage’s minimum VPD slider value. Error = target − inside VPD. Outside VPD does not cap the target.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓</div>
+            <div class="flow-decision"><strong>Is error within the deadband?</strong></div>
+            <div class="flow-branches">
+              <div class="flow-outcome"><b>Yes</b><span>Request the configured fan minimum.</span></div>
+              <div class="flow-outcome"><b>No, VPD is below target</b><span>PID adds positive correction to the fan minimum, capped at the configured maximum.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓ <span>requested speed</span></div>
+            <div class="flow-node">
+              <span class="flow-index">4</span>
+              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If the fan is at its ceiling and a large VPD error is not improving for the hold time, the unreachable safeguard steps it down.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓</div>
+            <div class="flow-node flow-result">
+              <span class="flow-index">5</span>
+              <div><strong>Send command to the growbox</strong><span>Write the command as fan_min = fan_max. The measured fan speed may take time to catch up.</span></div>
+            </div>
+          </div>
+        </details>
+
+        <details class="fan-flow-details state-help-details">
+          <summary>What the controller states mean</summary>
+          <div class="controller-state-help">
+            <h3>State</h3>
+            <dl class="controller-state-list">
+              <div><dt>idle</dt><dd>The controller has not completed its first control cycle yet.</dd></div>
+              <div><dt>disabled</dt><dd>Local PID is off. The growbox uses the stage’s configured fan range.</dd></div>
+              <div><dt>tracking</dt><dd>The controller is within its limits and no new fan command was needed this cycle.</dd></div>
+              <div><dt>applied</dt><dd>A new fan command was sent to the growbox.</dd></div>
+              <div><dt>ramping</dt><dd>The fan command is moving gradually toward the requested speed at the configured ramp rate.</dd></div>
+              <div><dt>no_inside_vpd</dt><dd>No valid inside VPD reading is available. The existing device setting is left in place while the controller retries.</dd></div>
+              <div><dt>throttling_unreachable</dt><dd>The fan is at its ceiling and VPD has not improved after the hold time, so the controller is stepping the fan down.</dd></div>
+              <div><dt>error</dt><dd>A control cycle failed. The controller logs the error and retries on its next cycle.</dd></div>
+            </dl>
+
+            <h3>Mode</h3>
+            <dl class="controller-state-list">
+              <div><dt>day</dt><dd>Current time is inside the active stage’s Lights on to Lights off interval.</dd></div>
+              <div><dt>night</dt><dd>Current time is outside that stage’s light interval.</dd></div>
+              <div><dt>night_silent</dt><dd>It is outside the light interval and the device’s silent mode is active.</dd></div>
+            </dl>
+          </div>
+        </details>
+
         <form id="controlForm" class="control-form">
           <div class="fan-limits">
             <div class="phases-head compact">
