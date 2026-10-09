@@ -141,7 +141,7 @@ class FanPidController:
             kp=float(pid_cfg.get("kp", 35)),
             ki=float(pid_cfg.get("ki", 0.12)),
             kd=float(pid_cfg.get("kd", 6)),
-            integral_limit=float(pid_cfg.get("integral_limit", 40)),
+            integral_limit=float(pid_cfg.get("integral_limit", 200)),
         )
         interval = float(pid_cfg.get("interval_s", 5.0))
         limits = self._fan_limits(cfg, phase_id, mode, phase)

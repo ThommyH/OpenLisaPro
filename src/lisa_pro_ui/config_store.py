@@ -12,10 +12,13 @@ MODES = ("day", "night", "night_silent")
 LED_MODES = ("day", "night")  # UI focuses on day/night LED
 
 DEFAULT_PID = {
-    "kp": 35.0,
+    "kp": 70.0,
     "ki": 0.12,
     "kd": 6.0,
-    "integral_limit": 40.0,
+    # Integral accumulates VPD error in kPa·s. At the default Ki, 40 only
+    # allows a 4.8 percentage-point correction, too little to clear sustained
+    # VPD errors. 200 allows up to 24 points while still bounding windup.
+    "integral_limit": 200.0,
     "ramp_pct_per_min": 4.0,
     "interval_s": 5.0,
     "deadband_kpa": 0.03,
@@ -145,6 +148,12 @@ class ConfigStore:
         for key, default in DEFAULT_PID.items():
             if key in raw and raw[key] is not None:
                 out[key] = type(default)(raw[key])
+        # Migrate former built-in PID defaults. The old values were also the
+        # shipped settings and produced a weak response to large VPD errors.
+        if out["kp"] == 35.0:
+            out["kp"] = DEFAULT_PID["kp"]
+        if out["integral_limit"] == 40.0:
+            out["integral_limit"] = DEFAULT_PID["integral_limit"]
         return out
 
     @classmethod

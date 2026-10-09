@@ -344,7 +344,8 @@
       $("pidCmd").textContent =
         st.fan_command == null ? "—" : `${fmt0(st.fan_command)}% ${fanBand}`;
     }
-    $("pidErr").textContent = st.pid_error == null ? "—" : `${Number(st.pid_error).toFixed(3)} kPa`;
+    const error = Number(st.pid_error);
+    $("pidErr").textContent = st.pid_error == null ? "—" : `${error > 0 ? "+" : ""}${error.toFixed(3)} kPa`;
     $("pidReason").textContent = st.reason || "—";
     $("pidStatus").classList.toggle("throttling", !!st.throttling);
     $("pidStatus").classList.toggle("active", !!enabled);
