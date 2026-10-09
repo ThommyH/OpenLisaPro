@@ -198,7 +198,7 @@
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-node">
               <span class="flow-index">3</span>
-              <div><strong>Choose the target and calculate error</strong><span>Target = the stage’s minimum VPD slider value. Error = target − inside VPD. Outside VPD does not cap the target.</span></div>
+              <div><strong>Estimate the ventilation limit from outside dew point</strong><span>Outside dew point represents its moisture content. The controller evaluates that moisture at the inside temperature to estimate the highest VPD ventilation can achieve. If the selected target is higher, it uses this achievable VPD instead of chasing the unreachable target.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-decision"><strong>Is error within the deadband?</strong></div>
@@ -227,6 +227,7 @@
               <div><dt>idle</dt><dd>The controller has not completed its first control cycle yet.</dd></div>
               <div><dt>disabled</dt><dd>Local PID is off. The growbox uses the stage’s configured fan range.</dd></div>
               <div><dt>tracking</dt><dd>The controller is within its limits and no new fan command was needed this cycle.</dd></div>
+              <div><dt>target_limited_by_outside_dew_point</dt><dd>The selected VPD target is higher than the ventilation limit estimated from outside dew point at inside temperature.</dd></div>
               <div><dt>applied</dt><dd>A new fan command was sent to the growbox.</dd></div>
               <div><dt>ramping</dt><dd>The fan command is moving gradually toward the requested speed at the configured ramp rate.</dd></div>
               <div><dt>no_inside_vpd</dt><dd>No valid inside VPD reading is available. The existing device setting is left in place while the controller retries.</dd></div>

@@ -13,7 +13,7 @@ from typing import Any, Callable, Optional
 from lisa_pro_ui.client import LisaProClient, LisaProError
 from lisa_pro_ui.config_store import MODES, ConfigStore
 from lisa_pro_ui.pid import PIDController
-from lisa_pro_ui.vpd import vpd_from_dew_point_kpa, vpd_kpa
+from lisa_pro_ui.vpd import dew_point_c, vpd_from_dew_point_kpa, vpd_kpa
 
 log = logging.getLogger(__name__)
 
@@ -154,14 +154,22 @@ class FanPidController:
         if vpd_inside is None:
             vpd_inside = vpd_kpa(status.get("temp_c"), status.get("humi_rh"))
         vpd_outside = vpd_kpa(status.get("temp_out_c"), status.get("humi_out_rh"))
+        outside_dew_point = status.get("dew_out_c")
+        if outside_dew_point is None:
+            outside_dew_point = dew_point_c(status.get("temp_out_c"), status.get("humi_out_rh"))
+        ventilation_vpd_limit = vpd_from_dew_point_kpa(status.get("temp_c"), outside_dew_point)
 
         vpd_min, _ = self._vpd_targets(cfg, phase_id, phase, mode)
         # Prefer the lower edge of the configured VPD band, just as fan control
         # prefers its minimum; the controller raises ventilation only as needed.
         target_raw = vpd_min
-        reachable = True
-        target = target_raw
-        reason = "tracking"
+        # Outside dew point represents its moisture content. Evaluate that
+        # moisture at the inside temperature to estimate the highest VPD that
+        # ventilation alone can produce; outdoor VPD itself is temperature-
+        # dependent and cannot be compared directly with the inside target.
+        reachable = ventilation_vpd_limit is None or target_raw <= ventilation_vpd_limit
+        target = min(target_raw, ventilation_vpd_limit) if ventilation_vpd_limit is not None else target_raw
+        reason = "tracking" if reachable else "target_limited_by_outside_dew_point"
 
         enabled = bool(cfg.get("enabled"))
         fan_actual = status.get("fan_pct")

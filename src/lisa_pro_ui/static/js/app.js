@@ -237,7 +237,17 @@
     $("vpd").textContent = vpdIn == null ? "—" : `${fmt2(vpdIn)} kPa`;
     $("vpdOut").textContent = vpdOut == null ? "—" : `${fmt2(vpdOut)} kPa`;
     const vpdTarget = ctrlState && ctrlState.vpd_target;
-    $("vpdTarget").textContent = vpdTarget == null ? "—" : `${fmt2(vpdTarget)} kPa`;
+    const vpdTargetRaw = ctrlState && ctrlState.vpd_target_raw;
+    const targetLimited =
+      vpdTarget != null && vpdTargetRaw != null && Number(vpdTarget) < Number(vpdTargetRaw) - 0.001;
+    $("vpdTarget").textContent = vpdTarget == null
+      ? "—"
+      : targetLimited
+        ? `${fmt2(vpdTargetRaw)} → ${fmt2(vpdTarget)} kPa`
+        : `${fmt2(vpdTarget)} kPa`;
+    $("vpdTarget").title = targetLimited
+      ? "Requested target → achievable target estimated from outside dew point at inside temperature"
+      : "Requested VPD target";
     $("tempOut").textContent = s.temp_out_c == null ? "—" : `${fmt0(s.temp_out_c)}°C`;
     $("humiOut").textContent = s.humi_out_rh == null ? "—" : `${fmt0(s.humi_out_rh)}%`;
     $("ledGlow").classList.toggle("on", !!s.light_on);

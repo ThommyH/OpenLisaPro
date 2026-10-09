@@ -11,6 +11,24 @@ def saturation_vapor_pressure_kpa(temp_c: float) -> float:
     return 0.6108 * math.exp((17.27 * temp_c) / (temp_c + 237.3))
 
 
+def dew_point_c(temp_c: Optional[float], rh_pct: Optional[float]) -> Optional[float]:
+    """Calculate dew point (°C) from air temperature and relative humidity."""
+    if temp_c is None or rh_pct is None:
+        return None
+    try:
+        temp = float(temp_c)
+        rh = float(rh_pct)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(temp) or not math.isfinite(rh):
+        return None
+    rh = max(0.0, min(100.0, rh))
+    if rh <= 0.0:
+        return None
+    alpha = math.log(rh / 100.0) + (17.27 * temp) / (237.3 + temp)
+    return (237.3 * alpha) / (17.27 - alpha)
+
+
 def vpd_kpa(temp_c: Optional[float], rh_pct: Optional[float]) -> Optional[float]:
     """Air VPD in kPa from temperature (°C) and relative humidity (%)."""
     if temp_c is None or rh_pct is None:
