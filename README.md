@@ -17,7 +17,7 @@ The UI can be viewed on desktop or mobile. The PID loop can write fan settings t
 
 ## Screenshots
 
-These screenshots use mock device data and show the dashboard at desktop and mobile widths. The example has a requested VPD target of 1.50 kPa; outside dew point limits the ventilation-achievable target to 1.25 kPa, so the fan command ramps down instead of chasing an unreachable target. The mock server does not connect to a growbox.
+These screenshots use mock device data and show the dashboard at desktop and mobile widths, including stage-specific Day silent/Night silent settings and the growbox silent schedule toggle. The example has a requested VPD target of 1.50 kPa; outside dew point limits the ventilation-achievable target to 1.25 kPa, so the fan command ramps down instead of chasing an unreachable target. The mock server does not connect to a growbox.
 
 ![OpenLisaPro dashboard at desktop width](docs/screenshots/dashboard-desktop.png)
 
