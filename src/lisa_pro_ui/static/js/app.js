@@ -142,24 +142,77 @@
     btnDry.classList.toggle("danger", dryOn);
   }
 
+  function updateCurrentStageCard() {
+    const grow = state.status && state.status.grow;
+    const currentStage = grow && grow.started ? grow.phase : null;
+    const normalized = (value) => String(value ?? "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase();
+    const phaseText = normalized(currentStage);
+    let currentId = null;
+
+    if (phaseText) {
+      const phase = state.phases.find((item) => {
+        const id = String(item.id ?? 0);
+        const name = normalized(item.name);
+        if (phaseText === id || (name && (phaseText === name || phaseText.includes(name) || name.includes(phaseText)))) {
+          return true;
+        }
+        const aliases = {
+          flower: ["flower", "blute", "bloom"],
+          vegetative: ["vegetative", "veg", "wachstum"],
+          seedling: ["seedling", "keim", "clone", "propagat"],
+        };
+        const key = Object.keys(aliases).find((group) =>
+          aliases[group].some((alias) => phaseText.includes(alias)),
+        );
+        return !!key && aliases[key].some((alias) => name.includes(alias));
+      });
+      if (phase) currentId = String(phase.id ?? 0);
+    }
+
+    document.querySelectorAll("#fanLimitsRoot .stage-card").forEach((card) => {
+      const isCurrent = card.dataset.phaseId === currentId;
+      card.classList.toggle("is-current", isCurrent);
+      const badge = card.querySelector(".current-stage-badge");
+      if (isCurrent && !badge) {
+        const currentBadge = document.createElement("span");
+        currentBadge.className = "current-stage-badge";
+        currentBadge.textContent = "Current stage";
+        card.querySelector(".phase-card-head").appendChild(currentBadge);
+      } else if (!isCurrent && badge) {
+        badge.remove();
+      }
+    });
+  }
+
   function updateClimate(s, ctrlState) {
-    $("tempIn").textContent = fmt1(s.temp_c);
-    $("humiIn").textContent = fmt1(s.humi_rh);
+    $("tempIn").textContent = s.temp_c == null ? "—" : `${fmt0(s.temp_c)}°C`;
+    $("humiIn").textContent = s.humi_rh == null ? "—" : `${fmt0(s.humi_rh)}%`;
     const vpdIn = s.vpd_kpa != null ? s.vpd_kpa : calcVpd(s.temp_c, s.humi_rh);
     const vpdOut =
       (ctrlState && ctrlState.vpd_outside) != null
         ? ctrlState.vpd_outside
         : calcVpd(s.temp_out_c, s.humi_out_rh);
-    $("vpd").textContent = fmt2(vpdIn);
-    $("vpdOut").textContent = fmt2(vpdOut);
-    $("vpdTarget").textContent = fmt2(ctrlState && ctrlState.vpd_target);
-    $("tempOut").textContent = fmt1(s.temp_out_c);
+    $("vpd").textContent = vpdIn == null ? "—" : `${fmt2(vpdIn)} kPa`;
+    $("vpdOut").textContent = vpdOut == null ? "—" : `${fmt2(vpdOut)} kPa`;
+    const vpdTarget = ctrlState && ctrlState.vpd_target;
+    $("vpdTarget").textContent = vpdTarget == null ? "—" : `${fmt2(vpdTarget)} kPa`;
+    $("tempOut").textContent = s.temp_out_c == null ? "—" : `${fmt0(s.temp_out_c)}°C`;
+    $("humiOut").textContent = s.humi_out_rh == null ? "—" : `${fmt0(s.humi_out_rh)}%`;
     $("ledGlow").classList.toggle("on", !!s.light_on);
   }
 
   function updateActuators(s) {
     $("lightVal").textContent = `${fmt1(s.light_pct)}% ${s.light_on ? "ON" : "OFF"}`;
     setBar("lightBar", s.light_pct);
+    // Bright "daylight" background while the LEDs are actually emitting
+    // light (on and above 0%), dark ambient theme otherwise.
+    document.body.classList.toggle(
+      "lights-on",
+      !!s.light_on && (s.light_pct ?? 0) > 0,
+    );
     $("fanVal").textContent = `${fmt0(s.fan_pct)}% · ${fmt0(s.fan_rpm)} rpm`;
     setBar("fanBar", s.fan_pct);
     $("fan3Val").textContent = `${fmt0(s.fan3_pct)}%`;
@@ -234,6 +287,7 @@
     const cs = (state.control && state.control.state) || {};
     setLink(true, s.internet_ok ? "Online" : s.wifi_connected ? "LAN only" : "Connected");
     updateHero(s);
+    updateCurrentStageCard();
     updateClimate(s, cs);
     updateActuators(s);
     updateGrowStrip(s);
@@ -396,6 +450,7 @@
       const id = String(phase.id ?? 0);
       const card = document.createElement("article");
       card.className = "stage-card";
+      card.dataset.phaseId = id;
       const rows = MODES.map((mode) => {
         const lim = (limits[id] && limits[id][mode]) || {};
         const vpd = (vpdMap[id] && vpdMap[id][mode]) || {};
@@ -458,6 +513,7 @@
         ${rows}`;
       root.appendChild(card);
     });
+    updateCurrentStageCard();
     root.querySelectorAll(".led-slider input[type=range]").forEach((input) => {
       input.addEventListener("input", () => {
         const val = input.parentElement.querySelector(".led-val");

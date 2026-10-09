@@ -65,8 +65,11 @@ def create_app(
         limit = request.args.get("limit", default=360, type=int)
         return jsonify({"history": controller.history(limit=limit or 360)})
 
-    def _apply_led_to_device(led_map: dict) -> None:
+    led_status_pct = 0.0
+
+    def _apply_led_to_device(led_map: dict, pct: float = 0.0) -> None:
         """Write local LED overrides onto device phase day/night settings."""
+        nonlocal led_status_pct
         if not isinstance(led_map, dict) or not led_map:
             return
         with client() as c:
@@ -86,8 +89,18 @@ def create_app(
                     if float(bucket.get("led", -1)) != value:
                         bucket["led"] = value
                         changed = True
+            # Reflect the commanded level in the UI; only push to hardware on change.
+            led_status_pct = pct
             if changed:
                 c.set_phases({"phases": phases})
+
+    def _commanded_led_pct(led_map) -> float:
+        """Return the max commanded LED percentage across all phases."""
+        values = []
+        for modes in (led_map or {}).values():
+            if isinstance(modes, dict):
+                values.extend(float(v) for v in modes.values() if str(v).strip())
+        return max(values, default=0.0)
 
     @app.post("/api/control")
     def control_post():
@@ -98,11 +111,17 @@ def create_app(
             return _err(exc, 400)
         led_error = None
         if "led" in body:
+            pct = _commanded_led_pct(cfg.get("led"))
             try:
-                _apply_led_to_device(cfg.get("led") or {})
+                _apply_led_to_device(cfg.get("led") or {}, float(pct))
             except Exception as exc:  # noqa: BLE001 — local save should still succeed
                 led_error = str(exc)
-        payload = {"ok": True, "config": cfg, "state": controller.snapshot()["state"]}
+        payload = {
+            "ok": True,
+            "config": cfg,
+            "state": controller.snapshot()["state"],
+            "led_status_pct": round(led_status_pct, 2),
+        }
         if led_error:
             payload["led_error"] = led_error
         return jsonify(payload)

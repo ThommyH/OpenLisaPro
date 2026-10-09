@@ -46,38 +46,46 @@
         </div>
 
         <div class="climate-stage" aria-live="polite">
-          <div class="climate-main">
-            <div class="reading xl">
-              <span class="label">Inside</span>
-              <span class="value mono" id="tempIn">—</span>
-              <span class="unit">°C</span>
-            </div>
-            <div class="reading xl">
-              <span class="label">Humidity</span>
-              <span class="value mono" id="humiIn">—</span>
-              <span class="unit">%</span>
-            </div>
+          <div class="climate-cols">
+            <section class="cluster">
+              <h3 class="cluster-title">Inside</h3>
+              <div class="cluster-readings">
+                <div class="reading xl">
+                  <span class="label">Temp</span>
+                  <span class="value mono" id="tempIn">—</span>
+                </div>
+                <div class="reading xl">
+                  <span class="label">Humidity</span>
+                  <span class="value mono" id="humiIn">—</span>
+                </div>
+                <div class="reading xl">
+                  <span class="label">VPD</span>
+                  <span class="value mono" id="vpd">—</span>
+                </div>
+              </div>
+            </section>
+            <section class="cluster">
+              <h3 class="cluster-title">Outside</h3>
+              <div class="cluster-readings">
+                <div class="reading xl">
+                  <span class="label">Temp</span>
+                  <span class="value mono" id="tempOut">—</span>
+                </div>
+                <div class="reading xl">
+                  <span class="label">Humidity</span>
+                  <span class="value mono" id="humiOut">—</span>
+                </div>
+                <div class="reading xl">
+                  <span class="label">VPD</span>
+                  <span class="value mono" id="vpdOut">—</span>
+                </div>
+              </div>
+            </section>
           </div>
           <div class="climate-rail">
             <div class="reading">
-              <span class="label">VPD in</span>
-              <span class="value mono" id="vpd">—</span>
-              <span class="unit">kPa</span>
-            </div>
-            <div class="reading">
-              <span class="label">VPD out</span>
-              <span class="value mono" id="vpdOut">—</span>
-              <span class="unit">kPa</span>
-            </div>
-            <div class="reading">
               <span class="label">Target</span>
               <span class="value mono" id="vpdTarget">—</span>
-              <span class="unit">kPa</span>
-            </div>
-            <div class="reading">
-              <span class="label">Outside</span>
-              <span class="value mono" id="tempOut">—</span>
-              <span class="unit">°C</span>
             </div>
           </div>
         </div>
