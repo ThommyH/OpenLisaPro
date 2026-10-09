@@ -13,7 +13,7 @@ from typing import Any, Callable, Optional
 from lisa_pro_ui.client import LisaProClient, LisaProError
 from lisa_pro_ui.config_store import MODES, ConfigStore
 from lisa_pro_ui.pid import PIDController
-from lisa_pro_ui.vpd import vpd_kpa
+from lisa_pro_ui.vpd import vpd_from_dew_point_kpa, vpd_kpa
 
 log = logging.getLogger(__name__)
 
@@ -147,7 +147,9 @@ class FanPidController:
         fan_min = float(limits["fan_min"])
         fan_max = float(limits["fan_max"])
 
-        vpd_inside = status.get("vpd_kpa")
+        vpd_inside = vpd_from_dew_point_kpa(status.get("temp_c"), status.get("dew_c"))
+        if vpd_inside is None:
+            vpd_inside = status.get("vpd_kpa")
         if vpd_inside is None:
             vpd_inside = vpd_kpa(status.get("temp_c"), status.get("humi_rh"))
         vpd_outside = vpd_kpa(status.get("temp_out_c"), status.get("humi_out_rh"))
@@ -159,12 +161,6 @@ class FanPidController:
         reachable = True
         target = target_raw
         reason = "tracking"
-
-        if vpd_outside is not None and target > vpd_outside:
-            # Cannot pull inside VPD above outside by ventilation alone.
-            target = vpd_outside
-            reachable = False
-            reason = "capped_by_outside_vpd"
 
         enabled = bool(cfg.get("enabled"))
         fan_actual = status.get("fan_pct")

@@ -563,13 +563,6 @@ input:focus {
   font-weight: 700;
 }
 
-.phase-id {
-  color: var(--ink-dim);
-  font-size: 0.78rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
-
 .phase-block-title {
   margin: 0 0 0.55rem;
   color: var(--leaf);

@@ -535,7 +535,6 @@
       card.innerHTML = `
         <div class="phase-card-head">
           <h3>${phase.name || `Phase ${id}`}</h3>
-          <span class="phase-id mono">id ${id}</span>
         </div>
         <div class="phase-schedule">
           <label>Lights on

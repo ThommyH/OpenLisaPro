@@ -184,12 +184,24 @@
           <details class="pid-settings">
             <summary>Global PID settings</summary>
             <div class="phase-grid pid-grid">
-              <label>Kp <input class="mono" type="number" step="0.1" id="pidKp" /></label>
-              <label>Ki <input class="mono" type="number" step="0.01" id="pidKi" /></label>
-              <label>Kd <input class="mono" type="number" step="0.1" id="pidKd" /></label>
-              <label>Ramp %/min <input class="mono" type="number" step="0.1" id="pidRamp" /></label>
-              <label>Interval s <input class="mono" type="number" step="0.5" id="pidInterval" /></label>
-              <label>Deadband <input class="mono" type="number" step="0.01" id="pidDeadband" /></label>
+              <label title="Proportional gain: how strongly fan speed reacts to the current VPD error. Increase for a faster, stronger response; too much can cause overshoot or hunting. Lower it for a gentler response.">
+                Kp <input class="mono" type="number" step="0.1" id="pidKp" />
+              </label>
+              <label title="Integral gain: how strongly the controller corrects VPD error that persists over time. Increase to remove a lasting offset faster; too much can build up and cause overshoot. Lower it for slower, smaller long-term correction.">
+                Ki <input class="mono" type="number" step="0.01" id="pidKi" />
+              </label>
+              <label title="Derivative gain: how much the controller reacts to changes in VPD error. Increase for more damping as VPD approaches its target; too much can make the response sensitive to sensor noise. Lower it for less damping.">
+                Kd <input class="mono" type="number" step="0.1" id="pidKd" />
+              </label>
+              <label title="Maximum fan-command change per minute. Increase to reach a new fan speed sooner; lower it for slower, smoother changes.">
+                Ramp %/min <input class="mono" type="number" step="0.1" id="pidRamp" />
+              </label>
+              <label title="Seconds between PID updates. Lower values make the controller react more often; higher values make it react more slowly and can smooth noisy readings.">
+                Interval s <input class="mono" type="number" step="0.5" id="pidInterval" />
+              </label>
+              <label title="VPD error range treated as close enough to target. Increase to tolerate a wider VPD variation and reduce small fan adjustments; lower it to control more tightly, with a greater chance of frequent changes.">
+                Deadband <input class="mono" type="number" step="0.01" id="pidDeadband" />
+              </label>
             </div>
           </details>
         </form>

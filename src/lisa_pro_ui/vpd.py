@@ -25,3 +25,20 @@ def vpd_kpa(temp_c: Optional[float], rh_pct: Optional[float]) -> Optional[float]
     rh = max(0.0, min(100.0, rh))
     svp = saturation_vapor_pressure_kpa(t)
     return svp * (1.0 - rh / 100.0)
+
+
+def vpd_from_dew_point_kpa(
+    temp_c: Optional[float], dew_point_c: Optional[float]
+) -> Optional[float]:
+    """Calculate air VPD from inside temperature and dew point in °C."""
+    if temp_c is None or dew_point_c is None:
+        return None
+    try:
+        temp = float(temp_c)
+        dew_point = float(dew_point_c)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(temp) or not math.isfinite(dew_point):
+        return None
+    actual_vapor_pressure = saturation_vapor_pressure_kpa(dew_point)
+    return max(0.0, saturation_vapor_pressure_kpa(temp) - actual_vapor_pressure)
