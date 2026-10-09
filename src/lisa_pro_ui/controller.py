@@ -152,8 +152,10 @@ class FanPidController:
             vpd_inside = vpd_kpa(status.get("temp_c"), status.get("humi_rh"))
         vpd_outside = vpd_kpa(status.get("temp_out_c"), status.get("humi_out_rh"))
 
-        vpd_min, vpd_max = self._vpd_targets(cfg, phase_id, phase, mode)
-        target_raw = (vpd_min + vpd_max) / 2.0
+        vpd_min, _ = self._vpd_targets(cfg, phase_id, phase, mode)
+        # Prefer the lower edge of the configured VPD band, just as fan control
+        # prefers its minimum; the controller raises ventilation only as needed.
+        target_raw = vpd_min
         reachable = True
         target = target_raw
         reason = "tracking"
