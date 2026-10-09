@@ -179,6 +179,28 @@ def create_app(
             payload["schedule_error"] = schedule_error
         return jsonify(payload)
 
+    @app.post("/api/control/reset")
+    def control_reset():
+        nonlocal led_status_pct
+        try:
+            with client() as c:
+                c.reset_phases()
+                phases = c.get_phases().get("phases") or []
+            cfg = store.reset()
+            cfg = store.ensure_fan_limits_from_phases(phases)
+            led_status_pct = 0.0
+            return jsonify(
+                {
+                    "ok": True,
+                    "config": cfg,
+                    "phases": phases,
+                    "state": controller.snapshot()["state"],
+                    "led_status_pct": led_status_pct,
+                }
+            )
+        except Exception as exc:
+            return _err(exc)
+
     @app.post("/api/control/seed-fans")
     def control_seed_fans():
         """Pull current device phase fan/LED settings into local overrides (if missing)."""

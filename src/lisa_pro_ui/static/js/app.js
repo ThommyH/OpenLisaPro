@@ -983,6 +983,27 @@
     })
   );
 
+  $("btnControlReset").addEventListener("click", () =>
+    withBusy(async () => {
+      const confirmed = await confirmAction(
+        "Reset all control settings? This disables the local PID, clears its overrides, and restores the growbox factory phase presets.",
+      );
+      if (!confirmed) return;
+      const res = await api("/api/control/reset", {
+        method: "POST",
+        body: "{}",
+      });
+      state.phases = res.phases || [];
+      state.controlDirty = false;
+      state.controlHydrated = false;
+      renderControl(
+        { config: res.config, state: res.state, history: state.history },
+        { forceForm: true },
+      );
+      toast("Control settings restored to defaults");
+    })
+  );
+
   $("btnSeedFans").addEventListener("click", () =>
     withBusy(async () => {
       if (state.controlDirty && !(await confirmAction("Discard unsaved control edits and re-seed from device?"))) {

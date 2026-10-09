@@ -67,6 +67,14 @@ class ConfigStore:
         with self._lock:
             return deepcopy(self._data)
 
+    def reset(self) -> dict[str, Any]:
+        """Restore local control settings to built-in defaults and persist them."""
+        with self._lock:
+            self._data = deepcopy(DEFAULT_CONFIG)
+            self._legacy_vpd = None
+            self.save()
+            return deepcopy(self._data)
+
     def update(self, patch: dict[str, Any]) -> dict[str, Any]:
         with self._lock:
             if "enabled" in patch:
