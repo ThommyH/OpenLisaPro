@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.19] - 2026-10-11
+
+### Fixed
+
+- Reapply saved LED percentages to the growbox at controller startup, preventing device defaults from overriding lower configured limits after a restart.
+
 ## [0.1.18] - 2026-10-11
 
 ### Added

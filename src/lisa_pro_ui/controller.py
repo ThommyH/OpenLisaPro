@@ -102,6 +102,7 @@ class FanPidController:
         self._last_temp_led_at: Optional[float] = None
         self._temp_led_pct: Optional[float] = None
         self._temp_led_key: Optional[tuple[int, str]] = None
+        self._led_settings_synced = False
 
     def start(self) -> None:
         with self._lock:
@@ -161,6 +162,9 @@ class FanPidController:
 
         self.store.ensure_fan_limits_from_phases(phases)
         cfg = self.store.get()
+        if not self._led_settings_synced:
+            phases = self._sync_configured_leds(phases, cfg)
+            self._led_settings_synced = True
 
         phase, phase_id = self._resolve_phase(status, phases)
         mode = self._resolve_mode(status, phase)
@@ -662,6 +666,44 @@ class FanPidController:
                 client.set_phases({"phases": updated})
         phases[:] = deepcopy(updated)
         self._last_phase_snapshot = updated
+
+    def _sync_configured_leds(
+        self, phases: list[dict[str, Any]], cfg: dict[str, Any]
+    ) -> list[dict[str, Any]]:
+        """Reapply persisted LED settings once when the controller starts."""
+        led_map = cfg.get("led") or {}
+        override = cfg.get("temperature_led_override")
+        with self._phase_write_lock:
+            with self._client_factory() as client:
+                latest = client.get_phases().get("phases") or []
+                updated = deepcopy(latest)
+                changed = False
+                for phase in updated:
+                    phase_id = str(phase.get("id", 0))
+                    modes = led_map.get(phase_id) or {}
+                    settings = phase.setdefault("settings", {})
+                    for mode in ("day", "day_silent", "night", "night_silent"):
+                        if mode not in modes:
+                            continue
+                        desired = float(modes[mode])
+                        if (
+                            isinstance(override, dict)
+                            and str(override.get("phase_id")) == phase_id
+                            and str(override.get("mode")) == mode
+                        ):
+                            override_pct = self._safe_float(override.get("current_pct"))
+                            if override_pct is not None:
+                                desired = min(desired, override_pct)
+                        bucket = settings.setdefault(mode, {})
+                        if self._safe_float(bucket.get("led")) != desired:
+                            bucket["led"] = desired
+                            changed = True
+                if changed:
+                    client.set_phases({"phases": updated})
+        if changed:
+            phases[:] = deepcopy(updated)
+            self._last_phase_snapshot = deepcopy(updated)
+        return phases
 
     def _restore_temperature_led(self, phases: list[dict[str, Any]], cfg: dict[str, Any]) -> None:
         if self._temp_led_key is None:

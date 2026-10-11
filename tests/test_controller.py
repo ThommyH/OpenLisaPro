@@ -556,6 +556,17 @@ def test_restart_restores_new_lower_led_level_instead_of_stale_temperature_overr
     assert store.get()["temperature_led_override"] is None
 
 
+def test_startup_reapplies_saved_led_limit_when_device_resets_to_higher_value(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update({"led": {"0": {"day": 8, "day_silent": 10}}})
+    TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] = 45
+
+    controller._tick(controller.store.get())
+
+    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 8
+    assert TemperatureProtectionClient.phase_data[0]["settings"]["day_silent"]["led"] == 10
+
+
 def test_controller_enforces_zero_led_in_both_night_modes(tmp_path):
     controller = make_temperature_controller(tmp_path)
     controller.store.update({"enabled": False, "temperature_limits": {}})
