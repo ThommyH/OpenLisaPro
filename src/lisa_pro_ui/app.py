@@ -80,7 +80,7 @@ def create_app(
     led_status_pct = 0.0
 
     def _apply_led_to_device(led_map: dict, pct: float = 0.0) -> None:
-        """Write local LED overrides onto device phase day/night settings."""
+        """Apply daytime LED overrides and keep both night settings at zero."""
         nonlocal led_status_pct
         if not isinstance(led_map, dict) or not led_map:
             return
@@ -93,9 +93,10 @@ def create_app(
                 if not isinstance(modes, dict):
                     continue
                 settings = phase.setdefault("settings", {})
-                for mode, led in modes.items():
-                    if mode not in ("day", "night"):
-                        continue
+                led_values = {"night": 0.0, "night_silent": 0.0}
+                if "day" in modes:
+                    led_values["day"] = modes["day"]
+                for mode, led in led_values.items():
                     bucket = settings.setdefault(mode, {})
                     value = max(0.0, min(100.0, float(led)))
                     if float(bucket.get("led", -1)) != value:
@@ -200,6 +201,7 @@ def create_app(
                 phases = c.get_phases().get("phases") or []
             cfg = store.reset()
             cfg = store.ensure_fan_limits_from_phases(phases)
+            _apply_led_to_device(cfg.get("led") or {}, 0.0)
             led_status_pct = 0.0
             return jsonify(
                 {
@@ -220,6 +222,7 @@ def create_app(
             with client() as c:
                 phases = c.get_phases().get("phases") or []
             cfg = store.ensure_fan_limits_from_phases(phases)
+            _apply_led_to_device(cfg.get("led") or {}, _commanded_led_pct(cfg.get("led")))
             return jsonify({"ok": True, "config": cfg})
         except Exception as exc:
             return _err(exc)

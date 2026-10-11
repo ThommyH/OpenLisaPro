@@ -179,6 +179,7 @@ def make_temperature_controller(tmp_path):
             "settings": {
                 "day": {"fan_min": 20, "fan_max": 80, "led": 40},
                 "night": {"fan_min": 10, "fan_max": 60, "led": 0},
+                "night_silent": {"fan_min": 10, "fan_max": 50, "led": 0},
             },
         }
     ]
@@ -264,3 +265,16 @@ def test_led_dims_after_fan_max_hold_when_outside_is_cool(tmp_path, monkeypatch)
     assert state["led_override_pct"] == 30.0
     assert "temporarily reduced" in state["temperature_warning"]
     assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 30.0
+
+
+def test_controller_enforces_zero_led_in_both_night_modes(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update({"enabled": False, "temperature_limits": {}})
+    TemperatureProtectionClient.phase_data[0]["settings"]["night"]["led"] = 35
+    TemperatureProtectionClient.phase_data[0]["settings"]["night_silent"]["led"] = 45
+
+    controller._tick(controller.store.get())
+
+    settings = TemperatureProtectionClient.phase_data[0]["settings"]
+    assert settings["night"]["led"] == 0.0
+    assert settings["night_silent"]["led"] == 0.0

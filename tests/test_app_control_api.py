@@ -53,3 +53,44 @@ def test_control_get_and_post(tmp_path: Path):
     assert again["led"]["0"]["night"] == 0.0
     assert again["vpd_targets"]["0"]["night"]["vpd_max"] == 1.1
     assert again["temperature_limits"]["0"]["max_temp_c"] == 29.5
+
+
+def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypatch):
+    from lisa_pro_ui import app as app_module
+
+    class FakeClient:
+        phases = [
+            {
+                "id": 0,
+                "settings": {
+                    "day": {"led": 20},
+                    "night": {"led": 50},
+                    "night_silent": {"led": 60},
+                },
+            }
+        ]
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get_phases(self):
+            return {"phases": self.phases}
+
+        def set_phases(self, payload):
+            type(self).phases = payload["phases"]
+
+    monkeypatch.setattr(app_module, "LisaProClient", FakeClient)
+    app = create_app(data_dir=tmp_path, start_controller=False)
+    response = app.test_client().post("/api/control", json={"led": {"0": {"day": 42}}})
+
+    assert response.status_code == 200
+    settings = FakeClient.phases[0]["settings"]
+    assert settings["day"]["led"] == 42.0
+    assert settings["night"]["led"] == 0.0
+    assert settings["night_silent"]["led"] == 0.0

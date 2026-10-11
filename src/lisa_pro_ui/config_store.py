@@ -144,7 +144,11 @@ class ConfigStore:
                             vpd_bucket[mode] = {"vpd_min": lo, "vpd_max": hi}
                         changed = True
                     if mode in LED_MODES and mode not in led_bucket:
-                        led_bucket[mode] = float(max(0.0, min(100.0, float(m.get("led", 0)))))
+                        led_bucket[mode] = (
+                            0.0
+                            if mode == "night"
+                            else float(max(0.0, min(100.0, float(m.get("led", 0)))))
+                        )
                         changed = True
             if changed:
                 self.save()
@@ -260,6 +264,9 @@ class ConfigStore:
                 continue
             bucket: dict[str, Any] = {}
             for mode in LED_MODES:
+                if mode == "night":
+                    bucket[mode] = 0.0
+                    continue
                 if mode not in modes or modes[mode] is None:
                     continue
                 bucket[mode] = float(max(0.0, min(100.0, float(modes[mode]))))

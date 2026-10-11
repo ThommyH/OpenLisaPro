@@ -540,7 +540,7 @@
         const vpdMin = vpd.vpd_min != null ? vpd.vpd_min : device.vpd_min ?? 0.8;
         const vpdMax = vpd.vpd_max != null ? vpd.vpd_max : device.vpd_max ?? 1.2;
         const ledBlock =
-          mode === "day" || mode === "night"
+          mode === "day"
             ? ledSliderHtml({
                 phaseId: id,
                 mode,
@@ -549,7 +549,9 @@
                   : device.led ?? (mode === "day" ? 40 : 0),
                 label: "LED",
               })
-            : `<div class="led-slider muted"><span class="led-slider-head"><span>LED</span><strong class="mono">—</strong></span></div>`;
+            : mode === "night" || mode === "night_silent"
+              ? `<div class="led-slider muted"><span class="led-slider-head"><span>LED</span><strong class="mono">0%</strong></span></div>`
+              : `<div class="led-slider muted"><span class="led-slider-head"><span>LED</span><strong class="mono">—</strong></span></div>`;
         return `<div class="stage-mode-row">
           <p class="phase-block-title">${MODE_LABELS[mode]}</p>
           <div class="stage-mode-controls">

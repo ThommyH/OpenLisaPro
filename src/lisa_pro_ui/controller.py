@@ -142,6 +142,8 @@ class FanPidController:
             if not isinstance(phases, list):
                 phases = []
 
+        phases = self._ensure_night_leds_off(phases)
+
         self.store.ensure_fan_limits_from_phases(phases)
         cfg = self.store.get()
 
@@ -483,6 +485,25 @@ class FanPidController:
     ) -> None:
         self._apply_fan_band(phases, phase_id, mode, speed, speed)
 
+    def _ensure_night_leds_off(self, phases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        updated = deepcopy(phases)
+        changed = False
+        for phase in updated:
+            settings = phase.get("settings") or {}
+            for mode in ("night", "night_silent"):
+                bucket = settings.get(mode)
+                if not isinstance(bucket, dict):
+                    continue
+                if self._safe_float(bucket.get("led")) != 0.0:
+                    bucket["led"] = 0.0
+                    changed = True
+        if not changed:
+            return phases
+        with self._client_factory() as client:
+            client.set_phases({"phases": updated})
+        self._last_phase_snapshot = updated
+        return updated
+
     def _apply_fan_band(
         self,
         phases: list[dict[str, Any]],
@@ -612,7 +633,11 @@ class FanPidController:
         if not active:
             return None
         if outside_limited:
-            return f"Outside air is {outside:.1f}°C, at or above the {limit:.1f}°C limit; cooling below the limit may not be possible. Fan is at maximum and LED power is reduced."
+            if led_reduced:
+                led_message = "LED power is temporarily reduced."
+            else:
+                led_message = "LED is already at 0%."
+            return f"Outside air is {outside:.1f}°C, at or above the {limit:.1f}°C limit; cooling below the limit may not be possible. Fan is at maximum. {led_message}"
         if led_reduced:
             return "Fan reached its maximum and temperature stayed high; LED power is temporarily reduced."
         return "Temperature is above the stage limit; fan is at maximum speed."

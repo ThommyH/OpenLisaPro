@@ -112,7 +112,7 @@ def test_update_accepts_flat_global_pid(tmp_path: Path):
 
 def test_led_normalize_and_seed(tmp_path: Path):
     store = ConfigStore(tmp_path / "c.json")
-    store.update({"led": {"0": {"day": 120, "night": -5, "ignored": 50}}})
+    store.update({"led": {"0": {"day": 120, "night": 75, "ignored": 50}}})
     led = store.get()["led"]["0"]
     assert led["day"] == 100.0
     assert led["night"] == 0.0
@@ -125,8 +125,8 @@ def test_led_normalize_and_seed(tmp_path: Path):
                 "id": 1,
                 "settings": {
                     "day": {"led": 35, "fan_min": 10, "fan_max": 40, "vpd_min": 0.7, "vpd_max": 1.0},
-                    "night": {"led": 0, "fan_min": 5, "fan_max": 20, "vpd_min": 0.6, "vpd_max": 0.9},
-                    "night_silent": {"led": 0, "fan_min": 5, "fan_max": 15, "vpd_min": 0.6, "vpd_max": 0.9},
+                    "night": {"led": 35, "fan_min": 5, "fan_max": 20, "vpd_min": 0.6, "vpd_max": 0.9},
+                    "night_silent": {"led": 45, "fan_min": 5, "fan_max": 15, "vpd_min": 0.6, "vpd_max": 0.9},
                 },
             }
         ]

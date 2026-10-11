@@ -7,7 +7,7 @@ The web app runs on your own computer or server. It talks to the growbox over it
 ## What it does
 
 - Shows inside and outside temperature, relative humidity, dew point, and VPD, along with the current grow stage and device status.
-- Lets you manage stage-specific maximum temperatures, VPD targets, fan limits, LED levels, and light-on/light-off schedules for day, Day silent, night, and Night silent modes.
+- Lets you manage stage-specific maximum temperatures, VPD targets, fan limits, daytime LED levels, and light-on/light-off schedules. Night and Night silent LED power is fixed at 0%.
 - Runs an optional local PID controller for exhaust fan speed. It uses inside VPD as the control goal, estimates the ventilation limit from outside dew point at inside temperature, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
 - Displays the controller's current mode, status, and ramp target, with an expandable explanation of the calculation and its states.
 - Provides a chart of recent climate and fan history, and controls for growbox settings such as silent operation, door actions, and MQTT.
@@ -86,7 +86,9 @@ Enable local PID control to let OpenLisaPro command the exhaust fan. The live st
 
 Set an optional **Maximum temperature** for each stage in the Control tab. This protection runs while local PID control is enabled. When inside temperature rises above the stage limit, the controller prioritizes cooling and commands the exhaust fan to that mode's configured maximum fan speed. VPD control resumes after temperature falls at least 0.5°C below the limit.
 
-If outside temperature is at or above the stage limit, ventilation cannot cool the grow space below that limit. OpenLisaPro keeps the exhaust fan at its configured maximum, immediately reduces the active day or night LED setting by 10 percentage points, and shows a warning. If outside air is cooler than the limit, LED power is reduced in 10 point steps after the fan has been at its maximum for 90 seconds without the inside temperature returning below the limit. Further reductions are spaced by 90 seconds. When the inside temperature falls 0.5°C below the limit, the configured LED level is restored. This temporary LED adjustment is written to the growbox phase settings and is restored by the controller after recovery or when local PID is disabled.
+Night and Night silent modes always use 0% LED power. Only the daytime LED level is configurable.
+
+If outside temperature is at or above the stage limit, ventilation cannot cool the grow space below that limit. OpenLisaPro keeps the exhaust fan at its configured maximum and shows a warning. During the day it immediately reduces the daytime LED setting by 10 percentage points; at night the LED is already off. If outside air is cooler than the limit, daytime LED power is reduced in 10 point steps after the fan has been at its maximum for 90 seconds without the inside temperature returning below the limit. Further reductions are spaced by 90 seconds. When the inside temperature falls 0.5°C below the limit, the configured daytime LED level is restored. This temporary LED adjustment is written to the growbox phase settings and is restored by the controller after recovery or when local PID is disabled.
 
 ### VPD target and outside dew point
 
