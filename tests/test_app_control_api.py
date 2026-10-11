@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from lisa_pro_ui.app import create_app
@@ -94,3 +95,5 @@ def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypa
     assert settings["day"]["led"] == 42.0
     assert settings["night"]["led"] == 0.0
     assert settings["night_silent"]["led"] == 0.0
+    persisted = json.loads((tmp_path / "control.json").read_text())
+    assert persisted["led"]["0"]["day"] == 42.0

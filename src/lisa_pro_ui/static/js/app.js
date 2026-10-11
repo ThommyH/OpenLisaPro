@@ -1052,7 +1052,11 @@
       state.controlDirty = false;
       state.controlHydrated = false;
       renderControl({ config: res.config, state: res.state, history: state.history }, { forceForm: true });
-      toast(res.schedule_error ? `Settings saved; schedule update failed: ${res.schedule_error}` : "Control settings saved");
+      const errors = [
+        res.led_error && `LED update failed: ${res.led_error}`,
+        res.schedule_error && `Schedule update failed: ${res.schedule_error}`,
+      ].filter(Boolean);
+      toast(errors.length ? `Control settings saved; ${errors.join("; ")}` : "Control settings saved");
     })
   );
 

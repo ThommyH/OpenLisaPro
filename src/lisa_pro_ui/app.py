@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import os
+import threading
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -30,7 +31,10 @@ def create_app(
     app.config["DEVICE_URL"] = (device_url or os.environ.get("LISA_PRO_URL") or DEFAULT_BASE_URL).rstrip("/")
     data_path = Path(data_dir or DEFAULT_DATA_DIR)
     store = ConfigStore(data_path / "control.json")
-    controller = FanPidController(device_url=app.config["DEVICE_URL"], store=store)
+    phase_write_lock = threading.RLock()
+    controller = FanPidController(
+        device_url=app.config["DEVICE_URL"], store=store, phase_write_lock=phase_write_lock
+    )
     app.config["CONTROL_STORE"] = store
     app.config["FAN_CONTROLLER"] = controller
 
@@ -84,28 +88,29 @@ def create_app(
         nonlocal led_status_pct
         if not isinstance(led_map, dict) or not led_map:
             return
-        with client() as c:
-            phases = c.get_phases().get("phases") or []
-            changed = False
-            for phase in phases:
-                phase_id = str(phase.get("id", 0))
-                modes = led_map.get(phase_id)
-                if not isinstance(modes, dict):
-                    continue
-                settings = phase.setdefault("settings", {})
-                led_values = {"night": 0.0, "night_silent": 0.0}
-                if "day" in modes:
-                    led_values["day"] = modes["day"]
-                for mode, led in led_values.items():
-                    bucket = settings.setdefault(mode, {})
-                    value = max(0.0, min(100.0, float(led)))
-                    if float(bucket.get("led", -1)) != value:
-                        bucket["led"] = value
-                        changed = True
-            # Reflect the commanded level in the UI; only push to hardware on change.
-            led_status_pct = pct
-            if changed:
-                c.set_phases({"phases": phases})
+        with phase_write_lock:
+            with client() as c:
+                phases = c.get_phases().get("phases") or []
+                changed = False
+                for phase in phases:
+                    phase_id = str(phase.get("id", 0))
+                    modes = led_map.get(phase_id)
+                    if not isinstance(modes, dict):
+                        continue
+                    settings = phase.setdefault("settings", {})
+                    led_values = {"night": 0.0, "night_silent": 0.0}
+                    if "day" in modes:
+                        led_values["day"] = modes["day"]
+                    for mode, led in led_values.items():
+                        bucket = settings.setdefault(mode, {})
+                        value = max(0.0, min(100.0, float(led)))
+                        if float(bucket.get("led", -1)) != value:
+                            bucket["led"] = value
+                            changed = True
+                # Reflect the commanded level in the UI; only push to hardware on change.
+                led_status_pct = pct
+                if changed:
+                    c.set_phases({"phases": phases})
 
     def _commanded_led_pct(led_map) -> float:
         """Return the max commanded LED percentage across all phases."""
@@ -138,23 +143,24 @@ def create_app(
         """Update per-phase light on/off times without replacing other phase settings."""
         if not isinstance(schedule_map, dict) or not schedule_map:
             return
-        with client() as c:
-            phases = c.get_phases().get("phases") or []
-            changed = False
-            for phase in phases:
-                schedule_patch = schedule_map.get(str(phase.get("id", 0)))
-                if not isinstance(schedule_patch, dict):
-                    continue
-                schedule = phase.setdefault("schedule", {})
-                for field in ("on", "off"):
-                    if field not in schedule_patch:
+        with phase_write_lock:
+            with client() as c:
+                phases = c.get_phases().get("phases") or []
+                changed = False
+                for phase in phases:
+                    schedule_patch = schedule_map.get(str(phase.get("id", 0)))
+                    if not isinstance(schedule_patch, dict):
                         continue
-                    value = str(schedule_patch[field])
-                    if schedule.get(field) != value:
-                        schedule[field] = value
-                        changed = True
-            if changed:
-                c.set_phases({"phases": phases})
+                    schedule = phase.setdefault("schedule", {})
+                    for field in ("on", "off"):
+                        if field not in schedule_patch:
+                            continue
+                        value = str(schedule_patch[field])
+                        if schedule.get(field) != value:
+                            schedule[field] = value
+                            changed = True
+                if changed:
+                    c.set_phases({"phases": phases})
 
     @app.post("/api/control")
     def control_post():
@@ -196,9 +202,10 @@ def create_app(
     def control_reset():
         nonlocal led_status_pct
         try:
-            with client() as c:
-                c.reset_phases()
-                phases = c.get_phases().get("phases") or []
+            with phase_write_lock:
+                with client() as c:
+                    c.reset_phases()
+                    phases = c.get_phases().get("phases") or []
             cfg = store.reset()
             cfg = store.ensure_fan_limits_from_phases(phases)
             _apply_led_to_device(cfg.get("led") or {}, 0.0)
@@ -296,16 +303,18 @@ def create_app(
     @app.post("/api/proxy/phases")
     def proxy_set_phases():
         try:
-            with client() as c:
-                return _ok(c.set_phases(request.get_json(force=True, silent=True) or {}))
+            with phase_write_lock:
+                with client() as c:
+                    return _ok(c.set_phases(request.get_json(force=True, silent=True) or {}))
         except Exception as exc:
             return _err(exc)
 
     @app.post("/api/proxy/phases/reset")
     def proxy_reset_phases():
         try:
-            with client() as c:
-                return _ok(c.reset_phases())
+            with phase_write_lock:
+                with client() as c:
+                    return _ok(c.reset_phases())
         except Exception as exc:
             return _err(exc)
 

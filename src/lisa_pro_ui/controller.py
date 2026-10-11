@@ -37,10 +37,12 @@ class FanPidController:
         device_url: str,
         store: ConfigStore,
         client_factory: Optional[Callable[[], LisaProClient]] = None,
+        phase_write_lock: Optional[threading.RLock] = None,
     ) -> None:
         self.device_url = device_url.rstrip("/")
         self.store = store
         self._client_factory = client_factory or (lambda: LisaProClient(self.device_url))
+        self._phase_write_lock = phase_write_lock or threading.RLock()
         self._lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
@@ -138,10 +140,7 @@ class FanPidController:
 
         with self._client_factory() as client:
             status = client.status()
-            phases_resp = client.get_phases()
-            phases = phases_resp.get("phases") if isinstance(phases_resp, dict) else phases_resp
-            if not isinstance(phases, list):
-                phases = []
+        phases: list[dict[str, Any]] = []
 
         phases = self._ensure_night_leds_off(phases)
 
@@ -487,21 +486,24 @@ class FanPidController:
         self._apply_fan_band(phases, phase_id, mode, speed, speed)
 
     def _ensure_night_leds_off(self, phases: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        updated = deepcopy(phases)
-        changed = False
-        for phase in updated:
-            settings = phase.get("settings") or {}
-            for mode in ("night", "night_silent"):
-                bucket = settings.get(mode)
-                if not isinstance(bucket, dict):
-                    continue
-                if self._safe_float(bucket.get("led")) != 0.0:
-                    bucket["led"] = 0.0
-                    changed = True
+        with self._phase_write_lock:
+            with self._client_factory() as client:
+                latest = client.get_phases().get("phases") or []
+                updated = deepcopy(latest)
+                changed = False
+                for phase in updated:
+                    settings = phase.get("settings") or {}
+                    for mode in ("night", "night_silent"):
+                        bucket = settings.get(mode)
+                        if not isinstance(bucket, dict):
+                            continue
+                        if self._safe_float(bucket.get("led")) != 0.0:
+                            bucket["led"] = 0.0
+                            changed = True
+                if changed:
+                    client.set_phases({"phases": updated})
         if not changed:
-            return phases
-        with self._client_factory() as client:
-            client.set_phases({"phases": updated})
+            return latest
         self._last_phase_snapshot = updated
         return updated
 
@@ -513,24 +515,21 @@ class FanPidController:
         fan_min: float,
         fan_max: float,
     ) -> None:
-        updated = deepcopy(phases)
-        target_phase = None
-        for phase in updated:
-            if int(phase.get("id", -1)) == int(phase_id):
-                target_phase = phase
-                break
-        if target_phase is None and updated:
-            target_phase = updated[min(int(phase_id), len(updated) - 1)]
-        if target_phase is None:
-            raise LisaProError("No phases available to update fan speed")
+        with self._phase_write_lock:
+            with self._client_factory() as client:
+                latest = client.get_phases().get("phases") or []
+                updated = deepcopy(latest)
+                target_phase = next((p for p in updated if int(p.get("id", -1)) == int(phase_id)), None)
+                if target_phase is None and updated:
+                    target_phase = updated[min(int(phase_id), len(updated) - 1)]
+                if target_phase is None:
+                    raise LisaProError("No phases available to update fan speed")
 
-        settings = target_phase.setdefault("settings", {})
-        mode_settings = settings.setdefault(mode, {})
-        mode_settings["fan_min"] = float(fan_min)
-        mode_settings["fan_max"] = float(fan_max)
-
-        with self._client_factory() as client:
-            client.set_phases({"phases": updated})
+                settings = target_phase.setdefault("settings", {})
+                mode_settings = settings.setdefault(mode, {})
+                mode_settings["fan_min"] = float(fan_min)
+                mode_settings["fan_max"] = float(fan_max)
+                client.set_phases({"phases": updated})
         phases[:] = deepcopy(updated)
         self._last_phase_snapshot = updated
 
@@ -561,18 +560,20 @@ class FanPidController:
     def _write_temperature_led(
         self, phases: list[dict[str, Any]], phase_id: int, led_mode: str, pct: float
     ) -> None:
-        updated = deepcopy(phases)
-        target = next((p for p in updated if int(p.get("id", -1)) == int(phase_id)), None)
-        if target is None:
-            return
-        settings = target.setdefault("settings", {})
-        mode_settings = settings.setdefault(led_mode, {})
-        value = max(0.0, min(100.0, float(pct)))
-        if self._safe_float(mode_settings.get("led")) == value:
-            return
-        mode_settings["led"] = value
-        with self._client_factory() as client:
-            client.set_phases({"phases": updated})
+        with self._phase_write_lock:
+            with self._client_factory() as client:
+                latest = client.get_phases().get("phases") or []
+                updated = deepcopy(latest)
+                target = next((p for p in updated if int(p.get("id", -1)) == int(phase_id)), None)
+                if target is None:
+                    return
+                settings = target.setdefault("settings", {})
+                mode_settings = settings.setdefault(led_mode, {})
+                value = max(0.0, min(100.0, float(pct)))
+                if self._safe_float(mode_settings.get("led")) == value:
+                    return
+                mode_settings["led"] = value
+                client.set_phases({"phases": updated})
         phases[:] = deepcopy(updated)
         self._last_phase_snapshot = updated
 

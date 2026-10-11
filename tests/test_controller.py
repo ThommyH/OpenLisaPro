@@ -293,3 +293,17 @@ def test_controller_enforces_zero_led_in_both_night_modes(tmp_path):
     settings = TemperatureProtectionClient.phase_data[0]["settings"]
     assert settings["night"]["led"] == 0.0
     assert settings["night_silent"]["led"] == 0.0
+
+
+def test_fan_command_preserves_newer_manual_led_setting(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    stale_phases = deepcopy(TemperatureProtectionClient.phase_data)
+    # A UI LED save can land after the controller read its phase snapshot.
+    TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] = 23.0
+
+    controller._apply_fan_band(stale_phases, 0, "day", 25, 70)
+
+    settings = TemperatureProtectionClient.phase_data[0]["settings"]["day"]
+    assert settings["led"] == 23.0
+    assert settings["fan_min"] == 25
+    assert settings["fan_max"] == 70
