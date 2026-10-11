@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import json
+import math
 import os
 import threading
 import time
@@ -20,6 +21,8 @@ from lisa_pro_ui.controller import FanPidController
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = Path(os.environ.get("LISA_PRO_DATA", PACKAGE_DIR.parent.parent / "data"))
+FLOW_EVENT_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
+FLOW_EVENT_PAGE_SIZE = 20
 
 
 def create_app(
@@ -36,6 +39,8 @@ def create_app(
     app.config["DEVICE_URL"] = (device_url or os.environ.get("LISA_PRO_URL") or DEFAULT_BASE_URL).rstrip("/")
     data_path = Path(data_dir or DEFAULT_DATA_DIR)
     store = ConfigStore(data_path / "control.json")
+    flow_events_path = data_path / "flow-events.json"
+    flow_events_lock = threading.RLock()
     phase_write_lock = threading.RLock()
     controller = FanPidController(
         device_url=app.config["DEVICE_URL"],
@@ -127,6 +132,100 @@ def create_app(
     def control_history():
         limit = request.args.get("limit", default=0, type=int)
         return jsonify({"history": controller.history(limit=max(0, limit))})
+
+    def read_flow_events() -> list[dict]:
+        with flow_events_lock:
+            try:
+                payload = json.loads(flow_events_path.read_text(encoding="utf-8"))
+                stored = payload.get("events", []) if isinstance(payload, dict) else []
+                if not isinstance(stored, list):
+                    stored = []
+            except FileNotFoundError:
+                stored = []
+            except (OSError, json.JSONDecodeError) as exc:
+                app.logger.warning("Could not read flow event history: %s", exc)
+                stored = []
+
+            cutoff = time.time() * 1000 - FLOW_EVENT_RETENTION_MS
+            events = [
+                event for event in stored
+                if isinstance(event, dict)
+                and isinstance(event.get("at"), (int, float))
+                and cutoff <= event["at"] <= time.time() * 1000 + 300_000
+            ]
+            events.sort(key=lambda event: event["at"], reverse=True)
+            if events != stored:
+                write_flow_events(events)
+            return events
+
+    def write_flow_events(events: list[dict]) -> None:
+        flow_events_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = flow_events_path.with_suffix(".tmp")
+        temporary.write_text(json.dumps({"schema_version": 1, "events": events}, indent=2) + "\n", encoding="utf-8")
+        temporary.replace(flow_events_path)
+
+    @app.get("/api/control/flow-events")
+    def control_flow_events_get():
+        events = read_flow_events()
+        total = len(events)
+        total_pages = max(1, (total + FLOW_EVENT_PAGE_SIZE - 1) // FLOW_EVENT_PAGE_SIZE)
+        page = min(total_pages, max(1, request.args.get("page", default=1, type=int)))
+        start = (page - 1) * FLOW_EVENT_PAGE_SIZE
+        return jsonify({
+            "events": events[start:start + FLOW_EVENT_PAGE_SIZE],
+            "page": page,
+            "page_size": FLOW_EVENT_PAGE_SIZE,
+            "total": total,
+            "total_pages": total_pages,
+        })
+
+    @app.post("/api/control/flow-events")
+    def control_flow_events_post():
+        body = request.get_json(silent=True)
+        if not isinstance(body, dict):
+            return jsonify({"error": "A flow event object is required."}), 400
+        at = body.get("at")
+        now_ms = time.time() * 1000
+        if not isinstance(at, (int, float)) or isinstance(at, bool) or not math.isfinite(at) or not now_ms - FLOW_EVENT_RETENTION_MS <= at <= now_ms + 300_000:
+            return jsonify({"error": "Flow event timestamp must be within the last 14 days."}), 400
+        title = str(body.get("title") or "").strip()[:200]
+        signature = str(body.get("signature") or "")[:1000]
+        steps = body.get("steps")
+        branches = body.get("branches")
+        if not title or not signature or not isinstance(steps, list) or not isinstance(branches, list):
+            return jsonify({"error": "Flow event title, signature, steps, and branches are required."}), 400
+        event = {
+            "at": int(at),
+            "title": title,
+            "steps": [str(item)[:100] for item in steps[:20]],
+            "branches": [str(item)[:100] for item in branches[:20]],
+            "signature": signature,
+        }
+        fan_change = body.get("fan_change")
+        if isinstance(fan_change, dict):
+            values = [fan_change.get(key) for key in ("from_pct", "to_pct", "delta_pct")]
+            if all(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) for value in values):
+                temperature_boost = fan_change.get("temperature_boost_pct", 0)
+                command_pct = fan_change.get("command_pct")
+                event["fan_change"] = {
+                    "from_pct": round(max(0.0, min(100.0, float(values[0]))), 2),
+                    "to_pct": round(max(0.0, min(100.0, float(values[1]))), 2),
+                    "delta_pct": round(max(-100.0, min(100.0, float(values[2]))), 2),
+                    "temperature_boost_pct": round(float(temperature_boost), 2)
+                    if isinstance(temperature_boost, (int, float)) and not isinstance(temperature_boost, bool) and math.isfinite(temperature_boost) else 0,
+                    "command_pct": round(max(0.0, min(100.0, float(command_pct))), 2)
+                    if isinstance(command_pct, (int, float)) and not isinstance(command_pct, bool) and math.isfinite(command_pct) else None,
+                }
+        with flow_events_lock:
+            events = read_flow_events()
+            events.insert(0, event)
+            write_flow_events(events)
+            total = len(events)
+        return jsonify({
+            "event": event,
+            "total": total,
+            "total_pages": max(1, (total + FLOW_EVENT_PAGE_SIZE - 1) // FLOW_EVENT_PAGE_SIZE),
+        }), 201
 
     @app.post("/api/proxy/silent/toggle")
     def proxy_toggle_silent():

@@ -1027,6 +1027,12 @@ input:focus {
 
 .flow-event.selected { border-color: var(--leaf); color: var(--ink); }
 .flow-event time { flex: 0 0 auto; color: var(--leaf); font: 0.72rem "JetBrains Mono", monospace; }
+.flow-event-copy { display: grid; gap: 0.2rem; min-width: 0; }
+.flow-event-copy small { color: var(--ink-dim); font-size: 0.7rem; line-height: 1.4; }
+.flow-event-pagination { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 0.75rem 1rem 1rem; }
+.flow-event-pagination[hidden] { display: none; }
+.flow-event-pagination span { color: var(--ink-dim); font: 0.68rem "JetBrains Mono", monospace; text-align: center; }
+.flow-event-pagination button:disabled { cursor: default; opacity: 0.45; }
 
 .controller-state-help {
   display: grid;

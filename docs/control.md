@@ -22,6 +22,6 @@ When outside temperature is at or above the hard limit, ventilation cannot cool 
 
 The **Chart** tab opens to a compact 48-hour fan and VPD chart. It retains up to two days of history across restarts. Toggle lines, choose 1/6/24/48-hour presets, zoom in or out, and use Older/Newer to move through retained samples. Fan percentage and VPD use separate scales.
 
-The calculation flowchart highlights the route used for the current fan request. Its collapsed **Recent flow changes** log keeps the last 20 changes for the current page session. Each entry includes the weekday, date, and time; select an entry to highlight its path.
+The calculation flowchart highlights the route used for the current fan request. Its collapsed **Recent flow changes** log persists changes for 14 days and shows 20 entries per page. Each entry includes the weekday, date, and time. When fan request data is available, the entry shows the target before and after the change, the percentage-point difference, the temperature boost, and the current command. Select an entry to highlight its path.
 
 For formulas, defaults, and controller priority rules, see [Specifications](specifications.md).

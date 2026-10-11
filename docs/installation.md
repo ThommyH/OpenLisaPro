@@ -35,7 +35,7 @@ docker run -d --name lisa-pro-ui --restart unless-stopped \
   192.168.178.69:5555/open-lisa-pro:latest
 ```
 
-Open `http://<host-address>:5050` from a device that can reach the Docker host. The named volume is mounted at `/data`; its files are managed by Docker and do not appear in the repository's `data/` directory. The settings file is `/data/control.json`.
+Open `http://<host-address>:5050` from a device that can reach the Docker host. The named volume is mounted at `/data`; its files are managed by Docker and do not appear in the repository's `data/` directory. Local settings and history files, including `/data/control.json` and `/data/flow-events.json`, live there.
 
 The image runs as UID 10001. On startup, the entrypoint assigns the mounted data directory and control files to that user. A bind mount such as `/path/on/host/data:/data` changes the host directory's ownership to UID 10001.
 
@@ -46,7 +46,7 @@ The image runs as UID 10001. On startup, the entrypoint assigns the mounted data
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `LISA_PRO_URL` | `http://192.168.178.242` | Growbox base URL |
-| `LISA_PRO_DATA` | `./data` | Directory for `control.json` and controller history |
+| `LISA_PRO_DATA` | `./data` | Directory for local settings, controller samples, and flow event history |
 | `LISA_PRO_PID_ENABLED` | `1` | Default local PID state for new/reset settings; set to `0` to disable by default |
 | `HOST` | `0.0.0.0` | Web server bind address |
 | `PORT` | `5050` | Web server port |

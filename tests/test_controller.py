@@ -328,6 +328,7 @@ def test_soft_temperature_hot_adds_fan_correction_outside_vpd_band_and_respects_
     assert not 0.8 <= state["vpd_inside"] <= 1.2
     assert state["temperature_soft_active"] is True
     assert state["temperature_adjustment_pct"] == 2.0
+    assert state["fan_vpd_request"] == 20.0
     assert state["fan_ramp_target"] == 22
 
     controller.store.update({"temperature_limits": {"0": {"max_temp_c": 25}}})
@@ -526,6 +527,33 @@ def test_manual_led_change_restarts_temperature_reduction_from_new_level(tmp_pat
     override = controller.store.get()["temperature_led_override"]
     assert override["base_pct"] == 45.0
     assert override["current_pct"] == 22.5
+
+
+def test_restart_restores_new_lower_led_level_instead_of_stale_temperature_override(tmp_path):
+    store = ConfigStore(tmp_path / "control.json")
+    store.update(
+        {
+            "led": {"0": {"day": 12}},
+            "temperature_led_override": {
+                "phase_id": "0",
+                "mode": "day",
+                "base_pct": 45,
+                "current_pct": 45,
+                "last_at": time.time() - 1000,
+            },
+        }
+    )
+    TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] = 45
+    controller = FanPidController(
+        device_url="http://unused",
+        store=store,
+        client_factory=TemperatureProtectionClient,
+    )
+
+    controller._tick(store.get())
+
+    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 12
+    assert store.get()["temperature_led_override"] is None
 
 
 def test_controller_enforces_zero_led_in_both_night_modes(tmp_path):

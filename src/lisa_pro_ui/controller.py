@@ -81,6 +81,7 @@ class FanPidController:
             "vpd_reachable": True,
             "fan_min_limit": None,
             "fan_max_limit": None,
+            "fan_vpd_request": None,
             "fan_command": None,
             "fan_ramp_target": None,
             "fan_actual": None,
@@ -182,7 +183,10 @@ class FanPidController:
                 and abs(saved_base - configured_base) >= 0.01
             ):
                 # The user changed the configured LED level while a temperature
-                # override was active. Treat the new level as the reduction baseline.
+                # override was active. Restore that new level on the device before
+                # dropping the persisted override; otherwise the stale, higher
+                # temporary level survives an application restart.
+                self._write_temperature_led(phases, phase_id, led_mode, configured_base)
                 self._clear_temperature_led_override()
                 saved_led_override = None
         if self._temp_led_key is None and isinstance(saved_led_override, dict):
@@ -298,6 +302,7 @@ class FanPidController:
                         "led_override_pct": None,
                         "fan_min_limit": fan_min,
                         "fan_max_limit": fan_max,
+                        "fan_vpd_request": None,
                         "fan_command": None,
                         "fan_ramp_target": None,
                         "fan_actual": fan_actual,
@@ -341,6 +346,7 @@ class FanPidController:
                         "led_override_pct": None,
                         "fan_min_limit": fan_min,
                         "fan_max_limit": fan_max,
+                        "fan_vpd_request": None,
                         "fan_ramp_target": None,
                         "fan_actual": fan_actual,
                         "reason": "no_inside_vpd",
@@ -355,6 +361,7 @@ class FanPidController:
         pid_out = self._pid.update(error, now, deadband=deadband)
         # Positive error (need higher VPD) → higher exhaust within [fan_min, fan_max].
         desired = self._map_pid_to_fan(pid_out, fan_min, fan_max, error, deadband=deadband)
+        vpd_fan_request = desired
 
         # Soft temperature control is additive: it can raise exhaust above the
         # VPD request, but never lower that request. A warm correction applies
@@ -506,6 +513,7 @@ class FanPidController:
                     "vpd_reachable": reachable,
                     "fan_min_limit": fan_min,
                     "fan_max_limit": fan_max,
+                    "fan_vpd_request": round(float(vpd_fan_request), 2),
                     "fan_command": commanded,
                     "fan_ramp_target": round(float(desired)),
                     "fan_actual": fan_actual,

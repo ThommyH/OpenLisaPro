@@ -16,6 +16,9 @@
     dayDirty: false,
     silentEnabled: false,
     flowEvents: [],
+    flowPage: 1,
+    flowTotal: 0,
+    flowTotalPages: 1,
     lastFlowSignature: null,
   };
 
@@ -477,11 +480,32 @@
               : st.vpd_reachable === false ? "Outside-air limited"
                 : st.temperature_soft_active ? "Soft temperature boost"
                   : st.reason === "ramping" ? "Ramping toward fan request" : "Tracking VPD target";
-      state.flowEvents.unshift({
+      const event = {
         at: Date.now(), title: reason, steps: [...steps], branches: [...branches], signature,
-      });
-      state.flowEvents = state.flowEvents.slice(0, 20);
-      renderFlowEvents();
+      };
+      const fromPct = st.fan_vpd_request == null ? NaN : Number(st.fan_vpd_request);
+      const toPct = st.fan_ramp_target == null ? NaN : Number(st.fan_ramp_target);
+      if (Number.isFinite(fromPct) && Number.isFinite(toPct)) {
+        event.fan_change = {
+          from_pct: fromPct,
+          to_pct: toPct,
+          delta_pct: toPct - fromPct,
+          temperature_boost_pct: Number(st.temperature_adjustment_pct || 0),
+          command_pct: st.fan_command != null && Number.isFinite(Number(st.fan_command)) ? Number(st.fan_command) : null,
+        };
+      }
+      if (state.flowPage === 1) {
+        state.flowEvents.unshift(event);
+        state.flowEvents = state.flowEvents.slice(0, 20);
+        renderFlowEvents();
+      }
+      api("/api/control/flow-events", { method: "POST", body: JSON.stringify(event) })
+        .then((result) => {
+          state.flowTotal = result.total;
+          state.flowTotalPages = result.total_pages;
+          renderFlowPagination();
+        })
+        .catch((error) => console.error("Could not persist controller flow change", error));
     }
     if (changed) applyFlowPath({ steps, branches });
     if (!enabled || st.reason === "disabled") {
@@ -516,7 +540,7 @@
     if (!state.flowEvents.length) {
       const empty = document.createElement("p");
       empty.className = "flow-event-empty";
-      empty.textContent = "Controller decisions will appear here.";
+      empty.textContent = "No controller flow changes in the last 14 days.";
       list.append(empty);
       return;
     }
@@ -530,13 +554,47 @@
       time.textContent = new Date(event.at).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
       const title = document.createElement("span");
       title.textContent = event.title;
-      button.append(time, title);
+      const copy = document.createElement("span");
+      copy.className = "flow-event-copy";
+      copy.append(title);
+      if (event.fan_change) {
+        const change = event.fan_change;
+        const detail = document.createElement("small");
+        const delta = Number(change.delta_pct);
+        const boost = Number(change.temperature_boost_pct || 0);
+        const command = Number(change.command_pct);
+        detail.textContent = `Fan target: ${fmt0(change.from_pct)}% → ${fmt0(change.to_pct)}% (${delta > 0 ? "+" : ""}${fmt1(delta)} pp)${boost > 0 ? ` · temperature boost +${fmt1(boost)} pp` : ""}${Number.isFinite(command) ? ` · command ${fmt0(command)}%` : ""}`;
+        copy.append(detail);
+      }
+      button.append(time, copy);
       button.addEventListener("click", () => {
         list.querySelectorAll(".flow-event").forEach((item) => item.classList.toggle("selected", item === button));
         applyFlowPath(event);
       });
       list.append(button);
     });
+  }
+
+  function renderFlowPagination() {
+    const nav = $("flowEventPagination");
+    if (!nav) return;
+    nav.hidden = state.flowTotalPages <= 1;
+    $("flowEventPageLabel").textContent = `Page ${state.flowPage} of ${state.flowTotalPages} · ${state.flowTotal} changes`;
+    $("flowEventsPrevious").disabled = state.flowPage <= 1;
+    $("flowEventsNext").disabled = state.flowPage >= state.flowTotalPages;
+  }
+
+  async function loadFlowEvents(page = 1) {
+    const result = await api(`/api/control/flow-events?page=${page}`);
+    state.flowEvents = result.events || [];
+    state.flowPage = result.page || 1;
+    state.flowTotal = result.total || 0;
+    state.flowTotalPages = result.total_pages || 1;
+    if (state.flowPage === 1 && state.flowEvents.length && state.lastFlowSignature == null) {
+      state.lastFlowSignature = state.flowEvents[0].signature || null;
+    }
+    renderFlowEvents();
+    renderFlowPagination();
   }
 
   function renderControl(snap, { forceForm = false } = {}) {
@@ -1406,6 +1464,8 @@
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
   $("checkBuild")?.addEventListener("click", () => checkBuildVersion(true));
+  $("flowEventsPrevious")?.addEventListener("click", () => loadFlowEvents(state.flowPage - 1).catch((err) => console.error(err)));
+  $("flowEventsNext")?.addEventListener("click", () => loadFlowEvents(state.flowPage + 1).catch((err) => console.error(err)));
 
   document.querySelectorAll("[data-chart-range]").forEach((button) => button.addEventListener("click", () => {
     state.chartHours = Number(button.dataset.chartRange);
@@ -1437,6 +1497,7 @@
     } catch (_) {}
     checkBuildVersion();
     setInterval(() => checkBuildVersion(), 15 * 60 * 1000);
+    await loadFlowEvents().catch((err) => console.error("Could not load controller flow history", err));
     await refreshStatus();
     await loadSettings();
     setInterval(refreshStatus, 2500);
