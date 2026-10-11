@@ -980,12 +980,14 @@ input:focus {
 }
 
 .flow-event-details {
-  margin: 0 1rem 1rem;
-  border-top: 1px solid var(--line);
+  margin: 0.85rem 0;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--glass);
 }
 
 .flow-event-details summary {
-  padding: 0.8rem 0;
+  padding: 0.8rem 1rem;
   color: var(--ink-dim);
   cursor: pointer;
   font-size: 0.75rem;
@@ -997,6 +999,9 @@ input:focus {
 .flow-event-details summary::-webkit-details-marker { display: none; }
 .flow-event-details summary::after { content: "+"; float: right; color: var(--leaf); }
 .flow-event-details[open] summary::after { content: "−"; }
+.flow-event-details[open] .flow-event-hint,
+.flow-event-details[open] .flow-event-list { margin-inline: 1rem; }
+.flow-event-details[open] .flow-event-list { margin-bottom: 1rem; }
 
 .flow-event-hint,
 .flow-event-empty {

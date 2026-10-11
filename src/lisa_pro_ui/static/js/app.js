@@ -974,20 +974,22 @@
     const availableStart = Number(history[0].t);
     const availableEnd = Number(history[history.length - 1].t);
     const rangeSeconds = state.chartHours * 3600;
-    const maxOffset = Math.max(0, (availableEnd - availableStart - rangeSeconds) / 3600);
+    const availableSpan = Math.max(1, availableEnd - availableStart);
+    const displayRangeSeconds = Math.min(rangeSeconds, availableSpan);
+    const maxOffset = Math.max(0, (availableSpan - rangeSeconds) / 3600);
     state.chartOffsetHours = Math.max(0, Math.min(maxOffset, state.chartOffsetHours));
     const end = availableEnd - state.chartOffsetHours * 3600;
-    const start = end - rangeSeconds;
+    const start = end - displayRangeSeconds;
     const visible = history.filter((point) => Number(point.t) >= start && Number(point.t) <= end);
     const plotLeft = pad.l;
     const plotRight = w - pad.r;
     const plotW = Math.max(1, plotRight - plotLeft);
     const gap = 38;
     const panelH = (h - pad.t - pad.b - gap) / 2;
-    const xOf = (t) => plotLeft + ((t - start) / rangeSeconds) * plotW;
+    const xOf = (t) => plotLeft + ((t - start) / displayRangeSeconds) * plotW;
     const formatAxisTime = (t) => state.chartHours >= 24
       ? new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })
-      : formatClock(t).slice(0, 5);
+      : displayRangeSeconds < 3600 ? formatClock(t) : formatClock(t).slice(0, 5);
 
     const drawPanel = (axis, title, top, maxValue, ticks) => {
       const bottom = top + panelH;
@@ -1030,7 +1032,7 @@
     const tickCount = Math.min(6, Math.max(2, Math.floor(plotW / 110)));
     ctx.font = "10px JetBrains Mono, monospace";
     for (let i = 0; i <= tickCount; i++) {
-      const t = start + (rangeSeconds * i) / tickCount;
+      const t = start + (displayRangeSeconds * i) / tickCount;
       const x = xOf(t);
       ctx.strokeStyle = "rgba(238,247,240,0.07)";
       ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, vpdBottom); ctx.stroke();

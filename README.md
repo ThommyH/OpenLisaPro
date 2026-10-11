@@ -10,7 +10,7 @@ The web app runs on your own computer or server. It talks to the growbox over it
 - Lets you manage stage-specific hard and soft temperature limits, VPD targets, fan limits, separate Day and Day silent LED levels, and light-on/light-off schedules. Night and Night silent LED power is fixed at 0%.
 - Runs a local PID controller for exhaust fan speed, enabled by default. It uses inside VPD as the control goal, estimates the ventilation limit from outside dew point at inside temperature, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
 - Displays the controller's current mode, status, and ramp target, with an expandable explanation of the calculation and its states.
-- Includes a collapsed event log in the fan flowchart; selecting an entry highlights the path taken for that controller decision.
+- Includes a collapsed event log beside the fan flowchart; selecting an entry highlights the path taken for that controller decision.
 - Provides a two-day fan and VPD history chart with selectable lines, independent scales, range presets, and zoom/navigation controls, plus controls for growbox settings such as silent operation, door actions, and MQTT.
 - Checks the running build commit against the latest commit on the repository's `main` branch and shows update status in the header. Abbreviated Docker commit hashes are matched against GitHub's full SHA.
 - Includes `LisaProClient`, a small typed Python wrapper for the growbox API.

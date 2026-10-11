@@ -9,7 +9,7 @@ This document describes the user-visible behavior of OpenLisaPro's local dashboa
 - Local control settings are stored in `control.json` in the configured data directory. Stage and mode overrides are local to OpenLisaPro; device factory presets remain separate until a device write is requested.
 - Controller fan/VPD samples are persisted to `controller-history.jsonl`, retained for the most recent 48 hours, and loaded after application restarts. The chart fetches retained history on demand so regular dashboard polling stays small.
 - The header compares the running build's embedded commit with the latest commit on GitHub's `main` branch. It checks on page load, periodically, and on request. Docker images embed the source commit as `APP_GIT_COMMIT`; abbreviated build hashes are compared as prefixes of GitHub's full SHA. Failed checks are retried after 30 seconds; builds without a commit value cannot confirm whether the checkout is current.
-- The fan calculation flowchart includes a collapsed-by-default event log of up to 20 recent controller path changes per page session. Selecting an event highlights its recorded flowchart path.
+- The fan calculation view has a separate collapsed-by-default event log beside the flowchart, with up to 20 recent controller path changes per page session. Selecting an event highlights its recorded flowchart path.
 - Local PID control is enabled for new/reset settings by default. `LISA_PRO_PID_ENABLED=0` changes that default. A saved setting or the Control tab toggle takes precedence.
 - Modes are `day`, `day_silent`, `night`, and `night_silent`. The active phase's light on/off schedule defines day and night, including schedules crossing midnight. The growbox silent schedule/active state selects the silent variant.
 
