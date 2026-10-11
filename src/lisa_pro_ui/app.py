@@ -241,36 +241,12 @@ def create_app(
 
     led_status_pct = 0.0
 
-    def _apply_led_to_device(led_map: dict, pct: float = 0.0) -> None:
-        """Apply daytime LED overrides and keep both night settings at zero."""
+    def _apply_saved_settings_to_device(cfg: dict, pct: float | None = None) -> None:
+        """Apply locally saved phase settings while preserving device-only fields."""
         nonlocal led_status_pct
-        if not isinstance(led_map, dict) or not led_map:
-            return
-        with phase_write_lock:
-            with client() as c:
-                phases = c.get_phases().get("phases") or []
-                changed = False
-                for phase in phases:
-                    phase_id = str(phase.get("id", 0))
-                    modes = led_map.get(phase_id)
-                    if not isinstance(modes, dict):
-                        continue
-                    settings = phase.setdefault("settings", {})
-                    led_values = {"night": 0.0, "night_silent": 0.0}
-                    if "day" in modes:
-                        led_values["day"] = modes["day"]
-                    if "day_silent" in modes:
-                        led_values["day_silent"] = modes["day_silent"]
-                    for mode, led in led_values.items():
-                        bucket = settings.setdefault(mode, {})
-                        value = max(0.0, min(100.0, float(led)))
-                        if float(bucket.get("led", -1)) != value:
-                            bucket["led"] = value
-                            changed = True
-                # Reflect the commanded level in the UI; only push to hardware on change.
-                led_status_pct = pct
-                if changed:
-                    c.set_phases({"phases": phases})
+        controller.sync_configured_settings([], cfg)
+        if pct is not None:
+            led_status_pct = pct
 
     def _commanded_led_pct(led_map) -> float:
         """Return the max commanded LED percentage across all phases."""
@@ -299,29 +275,6 @@ def create_app(
                 if hour > 23 or minute > 59:
                     raise ValueError(f"Invalid light {field} time: {value}")
 
-    def _apply_phase_schedules(schedule_map: dict) -> None:
-        """Update per-phase light on/off times without replacing other phase settings."""
-        if not isinstance(schedule_map, dict) or not schedule_map:
-            return
-        with phase_write_lock:
-            with client() as c:
-                phases = c.get_phases().get("phases") or []
-                changed = False
-                for phase in phases:
-                    schedule_patch = schedule_map.get(str(phase.get("id", 0)))
-                    if not isinstance(schedule_patch, dict):
-                        continue
-                    schedule = phase.setdefault("schedule", {})
-                    for field in ("on", "off"):
-                        if field not in schedule_patch:
-                            continue
-                        value = str(schedule_patch[field])
-                        if schedule.get(field) != value:
-                            schedule[field] = value
-                            changed = True
-                if changed:
-                    c.set_phases({"phases": phases})
-
     @app.post("/api/control")
     def control_post():
         body = request.get_json(force=True, silent=True) or {}
@@ -333,30 +286,25 @@ def create_app(
             cfg = store.update(body)
         except Exception as exc:
             return _err(exc, 400)
-        led_error = None
-        if "led" in body:
-            pct = _commanded_led_pct(cfg.get("led"))
+        device_error = None
+        device_settings = {"led", "fan_limits", "vpd_targets", "phase_schedules"}
+        if device_settings.intersection(body):
             try:
-                _apply_led_to_device(cfg.get("led") or {}, float(pct))
-                controller.reset_temperature_led_override()
+                if "led" in body:
+                    controller.reset_temperature_led_override()
+                    cfg = store.get()
+                pct = _commanded_led_pct(cfg.get("led")) if "led" in body else None
+                _apply_saved_settings_to_device(cfg, pct)
             except Exception as exc:  # noqa: BLE001 — local save should still succeed
-                led_error = str(exc)
-        schedule_error = None
-        if "phase_schedules" in body:
-            try:
-                _apply_phase_schedules(body.get("phase_schedules") or {})
-            except Exception as exc:  # noqa: BLE001 — local control save should still succeed
-                schedule_error = str(exc)
+                device_error = str(exc)
         payload = {
             "ok": True,
             "config": cfg,
             "state": controller.snapshot()["state"],
             "led_status_pct": round(led_status_pct, 2),
         }
-        if led_error:
-            payload["led_error"] = led_error
-        if schedule_error:
-            payload["schedule_error"] = schedule_error
+        if device_error:
+            payload["device_error"] = device_error
         return jsonify(payload)
 
     @app.post("/api/control/reset")
@@ -369,7 +317,7 @@ def create_app(
                     phases = c.get_phases().get("phases") or []
             cfg = store.reset()
             cfg = store.ensure_fan_limits_from_phases(phases)
-            _apply_led_to_device(cfg.get("led") or {}, 0.0)
+            _apply_saved_settings_to_device(cfg, 0.0)
             led_status_pct = 0.0
             return jsonify(
                 {
@@ -431,7 +379,7 @@ def create_app(
             with client() as c:
                 phases = c.get_phases().get("phases") or []
             cfg = store.ensure_fan_limits_from_phases(phases)
-            _apply_led_to_device(cfg.get("led") or {}, _commanded_led_pct(cfg.get("led")))
+            _apply_saved_settings_to_device(cfg, _commanded_led_pct(cfg.get("led")))
             return jsonify({"ok": True, "config": cfg})
         except Exception as exc:
             return _err(exc)

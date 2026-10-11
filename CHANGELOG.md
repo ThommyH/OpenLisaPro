@@ -2,6 +2,13 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.22] - 2026-10-11
+
+### Changed
+
+- Reapply saved fan limits, VPD targets, LED levels, and light schedules to matching Lisa Pro phase settings at startup and when saved.
+- Record soft temperature boost increases and backoffs, including the adjustment before and after each change.
+
 ## [0.1.21] - 2026-10-11
 
 ### Added

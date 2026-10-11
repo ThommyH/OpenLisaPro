@@ -20,6 +20,7 @@
     flowTotal: 0,
     flowTotalPages: 1,
     lastFlowSignature: null,
+    lastTemperatureAdjustmentPct: null,
   };
 
   const MODE_LABELS = {
@@ -469,16 +470,22 @@
         }
       }
     }
-    const signature = JSON.stringify([steps, branches, st.reason, !!st.throttling]);
+    const temperatureBoost = Number(st.temperature_adjustment_pct || 0);
+    const previousTemperatureBoost = state.lastTemperatureAdjustmentPct;
+    const boostChanged = previousTemperatureBoost != null && Math.abs(temperatureBoost - previousTemperatureBoost) >= 0.01;
+    state.lastTemperatureAdjustmentPct = temperatureBoost;
+    const signature = JSON.stringify([steps, branches, st.reason, !!st.throttling, Number(temperatureBoost.toFixed(2))]);
     const changed = signature !== state.lastFlowSignature;
     if (changed) {
       state.lastFlowSignature = signature;
       const reason = !enabled || st.reason === "disabled" ? "PID disabled"
         : st.reason === "no_inside_vpd" ? "Waiting for inside VPD"
           : st.temperature_active ? (st.temperature_warning || (st.reason === "temperature_limited_by_outside" ? "High temperature · outside too warm" : "High temperature · fan max"))
-            : st.throttling ? "Backing off · target unreachable"
-              : st.vpd_reachable === false ? "Outside-air limited"
-                : st.temperature_soft_active ? "Soft temperature boost"
+            : boostChanged && temperatureBoost < previousTemperatureBoost ? `Soft temperature boost backed off (${fmt1(previousTemperatureBoost)} → ${fmt1(temperatureBoost)} pp)`
+              : boostChanged && temperatureBoost > previousTemperatureBoost ? `Soft temperature boost increased (${fmt1(previousTemperatureBoost)} → ${fmt1(temperatureBoost)} pp)`
+                : st.throttling ? "Backing off · target unreachable"
+                  : st.vpd_reachable === false ? "Outside-air limited"
+                    : st.temperature_soft_active ? "Soft temperature boost"
                   : st.reason === "ramping" ? "Ramping toward fan request" : "Tracking VPD target";
       const event = {
         at: Date.now(), title: reason, steps: [...steps], branches: [...branches], signature,
@@ -563,7 +570,8 @@
         const delta = Number(change.delta_pct);
         const boost = Number(change.temperature_boost_pct || 0);
         const command = Number(change.command_pct);
-        detail.textContent = `Fan target: ${fmt0(change.from_pct)}% → ${fmt0(change.to_pct)}% (${delta > 0 ? "+" : ""}${fmt1(delta)} pp)${boost > 0 ? ` · temperature boost +${fmt1(boost)} pp` : ""}${Number.isFinite(command) ? ` · command ${fmt0(command)}%` : ""}`;
+        const hasSoftBoost = event.title?.startsWith("Soft temperature boost");
+        detail.textContent = `Fan target: ${fmt0(change.from_pct)}% → ${fmt0(change.to_pct)}% (${delta > 0 ? "+" : ""}${fmt1(delta)} pp)${boost > 0 || hasSoftBoost ? ` · temperature boost +${fmt1(boost)} pp` : ""}${Number.isFinite(command) ? ` · command ${fmt0(command)}%` : ""}`;
         copy.append(detail);
       }
       button.append(time, copy);
@@ -592,6 +600,8 @@
     state.flowTotalPages = result.total_pages || 1;
     if (state.flowPage === 1 && state.flowEvents.length && state.lastFlowSignature == null) {
       state.lastFlowSignature = state.flowEvents[0].signature || null;
+      const priorBoost = state.flowEvents[0].fan_change?.temperature_boost_pct;
+      state.lastTemperatureAdjustmentPct = Number.isFinite(Number(priorBoost)) ? Number(priorBoost) : 0;
     }
     renderFlowEvents();
     renderFlowPagination();
@@ -1390,8 +1400,7 @@
       state.controlHydrated = false;
       renderControl({ config: res.config, state: res.state, history: state.history }, { forceForm: true });
       const errors = [
-        res.led_error && `LED update failed: ${res.led_error}`,
-        res.schedule_error && `Schedule update failed: ${res.schedule_error}`,
+        res.device_error && `Lisa Pro settings update failed: ${res.device_error}`,
       ].filter(Boolean);
       toast(errors.length ? `Control settings saved; ${errors.join("; ")}` : "Control settings saved");
     })

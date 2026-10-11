@@ -6,7 +6,7 @@ This document describes the user-visible behavior of OpenLisaPro's local dashboa
 
 - OpenLisaPro is a Flask application and Python client for Lisa Pro / LuminaGrowX growboxes. The browser communicates with Flask; Flask communicates with the growbox HTTP API.
 - The dashboard displays inside and outside temperature, relative humidity, dew point, VPD, device state, stage, and fan readings.
-- Local control settings are stored in `control.json` in the configured data directory. Stage and mode overrides are local to OpenLisaPro; device factory presets remain separate until a device write is requested.
+- Local control settings are stored in `control.json` in the configured data directory. Saved stage fan limits, VPD targets, LED levels, and light schedules are authoritative: OpenLisaPro writes them to matching Lisa Pro phase settings at startup and when saved. PID tuning and temperature protection remain local because the device phase API has no matching fields.
 - Controller fan/VPD samples are persisted to `controller-history.jsonl`, retained for the most recent 48 hours, and loaded after application restarts. The chart fetches retained history on demand so regular dashboard polling stays small.
 - Controller flow changes are persisted to `flow-events.json` in the configured data directory and retained for 14 days.
 - The header compares the running build's embedded commit with the latest commit on GitHub's `main` branch. It checks on page load, periodically, and on request. Docker images embed the source commit as `APP_GIT_COMMIT`; abbreviated build hashes are compared as prefixes of GitHub's full SHA. Failed checks are retried after 30 seconds; builds without a commit value cannot confirm whether the checkout is current.
