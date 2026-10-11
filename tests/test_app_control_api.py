@@ -30,6 +30,29 @@ def test_version_endpoint_compares_current_build_with_latest_main_commit(tmp_pat
     assert body["is_latest"] is True
 
 
+def test_version_endpoint_matches_abbreviated_build_commit(tmp_path, monkeypatch):
+    full_commit = "e64f0975504b2e2c489feebfeebbf76fec4ec41e"
+    monkeypatch.setenv("APP_GIT_COMMIT", full_commit[:7])
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps({"sha": full_commit}).encode()
+
+    monkeypatch.setattr("lisa_pro_ui.app.urlopen", lambda *_args, **_kwargs: FakeResponse())
+    app = create_app(data_dir=tmp_path, start_controller=False)
+
+    body = app.test_client().get("/api/version?refresh=1").get_json()
+
+    assert body["current_commit"] == full_commit[:7]
+    assert body["is_latest"] is True
+
+
 def test_control_get_and_post(tmp_path: Path):
     app = create_app(data_dir=tmp_path, start_controller=False)
     client = app.test_client()

@@ -74,7 +74,7 @@
         status.dataset.state = "error";
         label.textContent = "GitHub check unavailable";
         detail.textContent = `Build ${result.version} · try again later`;
-      } else if (current.toLowerCase() === latest.toLowerCase()) {
+      } else if (result.is_latest === true || current.toLowerCase() === latest.toLowerCase() || latest.toLowerCase().startsWith(current.toLowerCase())) {
         status.dataset.state = "current";
         label.textContent = "Up to date";
         detail.textContent = `Build ${result.version} · ${latest.slice(0, 7)}`;

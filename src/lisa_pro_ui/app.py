@@ -68,10 +68,12 @@ def create_app(
         current_commit = os.environ.get("APP_GIT_COMMIT", os.environ.get("GIT_COMMIT", "unknown"))
         force = request.args.get("refresh") == "1"
         now = time.time()
-        if force or now - update_cache["checked_at"] >= 300:
+        cache_ttl = 30 if update_cache["error"] else 300
+        if force or now - update_cache["checked_at"] >= cache_ttl:
             with update_cache_lock:
                 now = time.time()
-                if force or now - update_cache["checked_at"] >= 300:
+                cache_ttl = 30 if update_cache["error"] else 300
+                if force or now - update_cache["checked_at"] >= cache_ttl:
                     try:
                         req = Request(
                             "https://api.github.com/repos/ThommyH/OpenLisaPro/commits/main",
@@ -88,7 +90,12 @@ def create_app(
                         update_cache.update(checked_at=now, latest_commit=None, error=str(exc))
         latest_commit = update_cache["latest_commit"]
         build_commit = current_commit.strip().lower()
-        is_latest = bool(latest_commit and build_commit != "unknown" and build_commit == latest_commit.lower())
+        latest_sha = str(latest_commit or "").strip().lower()
+        is_latest = bool(
+            latest_sha
+            and build_commit != "unknown"
+            and (build_commit == latest_sha or latest_sha.startswith(build_commit) or build_commit.startswith(latest_sha))
+        )
         return jsonify(
             {
                 "version": current_version,
