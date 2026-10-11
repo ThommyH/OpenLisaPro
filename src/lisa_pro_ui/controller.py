@@ -31,6 +31,7 @@ SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 60.0
 SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C = 0.1
 SOFT_TEMPERATURE_BOOST_STEP_PCT = 2.0
 SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 4.0
+PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
 
 PHASE_NAME_HINTS = (
     ("flower", ("flower", "blüte", "bluete", "blute", "bloom")),
@@ -106,7 +107,7 @@ class FanPidController:
         self._last_temp_led_at: Optional[float] = None
         self._temp_led_pct: Optional[float] = None
         self._temp_led_key: Optional[tuple[int, str]] = None
-        self._device_settings_synced = False
+        self._last_device_settings_sync_at: Optional[float] = None
         self._soft_temperature_key: Optional[tuple[int, str]] = None
         self._soft_temperature_boost_pct = 0.0
         self._soft_temperature_observed_at: Optional[float] = None
@@ -170,9 +171,15 @@ class FanPidController:
 
         self.store.ensure_fan_limits_from_phases(phases)
         cfg = self.store.get()
-        if not self._device_settings_synced:
-            phases = self.sync_configured_settings(phases, cfg)
-            self._device_settings_synced = True
+        sync_now = time.monotonic()
+        if (
+            self._last_device_settings_sync_at is None
+            or sync_now - self._last_device_settings_sync_at >= PHASE_SETTINGS_SYNC_INTERVAL_S
+        ):
+            phases = self.sync_configured_settings(
+                phases, cfg, include_fan_limits=not bool(cfg.get("enabled"))
+            )
+            self._last_device_settings_sync_at = sync_now
 
         phase, phase_id = self._resolve_phase(status, phases)
         mode = self._resolve_mode(status, phase)
@@ -754,7 +761,11 @@ class FanPidController:
         self._last_phase_snapshot = updated
 
     def sync_configured_settings(
-        self, phases: list[dict[str, Any]], cfg: dict[str, Any]
+        self,
+        phases: list[dict[str, Any]],
+        cfg: dict[str, Any],
+        *,
+        include_fan_limits: bool = True,
     ) -> list[dict[str, Any]]:
         """Apply locally saved phase settings to the device, preserving unrelated fields."""
         led_map = cfg.get("led") or {}
@@ -776,7 +787,10 @@ class FanPidController:
                     for mode in ("day", "day_silent", "night", "night_silent"):
                         bucket = settings.setdefault(mode, {})
                         fan_limits = fan_modes.get(mode)
-                        if isinstance(fan_limits, dict):
+                        # With PID enabled these device fields carry the live
+                        # fan command during periodic sync. Explicit saves and
+                        # startup still write the configured bounds.
+                        if include_fan_limits and isinstance(fan_limits, dict):
                             for field in ("fan_min", "fan_max"):
                                 value = self._safe_float(fan_limits.get(field))
                                 if value is not None and self._safe_float(bucket.get(field)) != value:
@@ -816,6 +830,7 @@ class FanPidController:
         if changed:
             phases[:] = deepcopy(updated)
             self._last_phase_snapshot = deepcopy(updated)
+            log.info("Reapplied saved OpenLisaPro phase settings to Lisa Pro")
         return phases
 
     def _restore_temperature_led(self, phases: list[dict[str, Any]], cfg: dict[str, Any]) -> None:

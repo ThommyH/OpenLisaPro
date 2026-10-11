@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.24] - 2026-10-11
+
+### Changed
+
+- Reconcile saved OpenLisaPro phase settings to Lisa Pro once per minute, restoring configured values if they change on the device while preserving the active PID fan command.
+
 ## [0.1.23] - 2026-10-11
 
 ### Changed
