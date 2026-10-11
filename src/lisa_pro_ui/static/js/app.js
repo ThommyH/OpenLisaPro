@@ -6,7 +6,7 @@
     phases: [],
     control: null,
     history: [],
-    chartHours: 6,
+    chartHours: 48,
     chartOffsetHours: 0,
     chartVisible: { fan_command: true, fan_actual: true, fan_min_limit: false, fan_max_limit: false, vpd_inside: true, vpd_outside: false, vpd_target: true },
     chartLoaded: false,
@@ -527,7 +527,7 @@
       button.classList.toggle("selected", index === 0);
       const time = document.createElement("time");
       time.dateTime = new Date(event.at).toISOString();
-      time.textContent = new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      time.textContent = new Date(event.at).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
       const title = document.createElement("span");
       title.textContent = event.title;
       button.append(time, title);
@@ -932,14 +932,14 @@
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
     const cssW = canvas.parentElement?.clientWidth || canvas.clientWidth || 960;
-    const cssH = window.matchMedia("(max-width: 900px)").matches ? 440 : 520;
+    const cssH = window.matchMedia("(max-width: 900px)").matches ? 320 : 380;
     canvas.width = Math.floor(cssW * dpr);
     canvas.height = Math.floor(cssH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const w = cssW;
     const h = cssH;
-    const pad = { t: 24, r: 18, b: 32, l: 48 };
+    const pad = { t: 20, r: 14, b: 26, l: 42 };
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "rgba(8,28,20,0.35)";
     ctx.fillRect(0, 0, w, h);
@@ -966,7 +966,7 @@
 
     if (!history || history.length < 2) {
       ctx.fillStyle = "rgba(238,247,240,0.45)";
-      ctx.font = "14px Outfit, sans-serif";
+      ctx.font = "12px Outfit, sans-serif";
       ctx.fillText("Collecting control history…", pad.l, h / 2);
       return;
     }
@@ -984,7 +984,7 @@
     const plotLeft = pad.l;
     const plotRight = w - pad.r;
     const plotW = Math.max(1, plotRight - plotLeft);
-    const gap = 38;
+    const gap = 28;
     const panelH = (h - pad.t - pad.b - gap) / 2;
     const xOf = (t) => plotLeft + ((t - start) / displayRangeSeconds) * plotW;
     const formatAxisTime = (t) => state.chartHours >= 24
@@ -994,9 +994,9 @@
     const drawPanel = (axis, title, top, maxValue, ticks) => {
       const bottom = top + panelH;
       ctx.fillStyle = "rgba(238,247,240,0.7)";
-      ctx.font = "600 12px Outfit, sans-serif";
+      ctx.font = "600 10px Outfit, sans-serif";
       ctx.fillText(title, plotLeft, top - 7);
-      ctx.font = "11px JetBrains Mono, monospace";
+      ctx.font = "9px JetBrains Mono, monospace";
       ctx.lineWidth = 1;
       ticks.forEach((value) => {
         const y = bottom - (value / maxValue) * panelH;
@@ -1009,7 +1009,7 @@
       seriesSet.forEach((series) => {
         ctx.beginPath();
         ctx.strokeStyle = series.color;
-        ctx.lineWidth = series.dash ? 1.4 : 2;
+        ctx.lineWidth = series.dash ? 1.2 : 1.6;
         ctx.setLineDash(series.dash ? [5, 4] : []);
         let started = false;
         visible.forEach((point) => {
@@ -1030,7 +1030,7 @@
     const vpdTop = fanBottom + gap;
     const vpdBottom = drawPanel("vpd", "VPD · kPa", vpdTop, 2.5, [0, 0.5, 1, 1.5, 2, 2.5]);
     const tickCount = Math.min(6, Math.max(2, Math.floor(plotW / 110)));
-    ctx.font = "10px JetBrains Mono, monospace";
+    ctx.font = "8px JetBrains Mono, monospace";
     for (let i = 0; i <= tickCount; i++) {
       const t = start + (displayRangeSeconds * i) / tickCount;
       const x = xOf(t);

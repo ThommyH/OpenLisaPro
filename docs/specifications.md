@@ -9,7 +9,7 @@ This document describes the user-visible behavior of OpenLisaPro's local dashboa
 - Local control settings are stored in `control.json` in the configured data directory. Stage and mode overrides are local to OpenLisaPro; device factory presets remain separate until a device write is requested.
 - Controller fan/VPD samples are persisted to `controller-history.jsonl`, retained for the most recent 48 hours, and loaded after application restarts. The chart fetches retained history on demand so regular dashboard polling stays small.
 - The header compares the running build's embedded commit with the latest commit on GitHub's `main` branch. It checks on page load, periodically, and on request. Docker images embed the source commit as `APP_GIT_COMMIT`; abbreviated build hashes are compared as prefixes of GitHub's full SHA. Failed checks are retried after 30 seconds; builds without a commit value cannot confirm whether the checkout is current.
-- The fan calculation view has a separate collapsed-by-default event log beside the flowchart, with up to 20 recent controller path changes per page session. Selecting an event highlights its recorded flowchart path.
+- The fan calculation view has a separate collapsed-by-default event log beside the flowchart, with up to 20 recent controller path changes per page session. Each entry shows its weekday, calendar date, and time. Selecting an event highlights its recorded flowchart path.
 - Local PID control is enabled for new/reset settings by default. `LISA_PRO_PID_ENABLED=0` changes that default. A saved setting or the Control tab toggle takes precedence.
 - Modes are `day`, `day_silent`, `night`, and `night_silent`. The active phase's light on/off schedule defines day and night, including schedules crossing midnight. The growbox silent schedule/active state selects the silent variant.
 
@@ -45,7 +45,7 @@ The fan command is written to the growbox as equal fan minimum and maximum value
 ## User interface
 
 - The UI supports desktop and mobile layouts and exposes the current fan command, ramp target, controller state, and calculation flowchart.
-- The history chart separates fan percentage and VPD (kPa) into aligned plots with independent scales. Each line can be toggled. Range presets cover 1, 6, 24, and 48 hours; zoom and older/newer controls navigate within available history.
+- The history chart separates fan percentage and VPD (kPa) into aligned plots with independent scales. Each line can be toggled. It opens to a compact 48-hour view by default. Range presets cover 1, 6, 24, and 48 hours; zoom and older/newer controls navigate within available history.
 - The flowchart highlights the decisions used for the current fan request, including outside-dew-point target limiting, PID/deadband branch, soft-temperature boost, and command/ramp.
 - PID tuning controls are hidden by default. Stage controls include schedule times, VPD and fan ranges, soft temperature bounds, hard maximum temperature, and stage reset.
 - Settings and device operations can write to growbox hardware. Controller and persistence behavior should be developed/tested with mocks rather than assuming a live device is available.
