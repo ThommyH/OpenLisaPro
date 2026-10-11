@@ -19,7 +19,7 @@ log = logging.getLogger(__name__)
 
 HISTORY_MAX = 720  # ~1h at 5s
 TEMPERATURE_RESPONSE_HOLD_S = 90.0
-TEMPERATURE_LED_STEP_PCT = 10.0
+TEMPERATURE_LED_REDUCTION_FACTOR = 0.5
 TEMPERATURE_LED_MIN_PCT = 20.0
 TEMPERATURE_RECOVERY_MARGIN_C = 0.5
 
@@ -635,7 +635,7 @@ class FanPidController:
             return
         minimum = min(TEMPERATURE_LED_MIN_PCT, base)
         current = min(self._temp_led_pct, base)
-        reduced = minimum if current < minimum else max(minimum, current - TEMPERATURE_LED_STEP_PCT)
+        reduced = max(minimum, current * TEMPERATURE_LED_REDUCTION_FACTOR)
         if reduced != self._temp_led_pct:
             self._write_temperature_led(phases, phase_id, led_mode, reduced)
             self._temp_led_pct = reduced

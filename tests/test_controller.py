@@ -231,9 +231,9 @@ def test_hot_outside_warns_dims_led_and_restores_after_cooling(tmp_path):
     state = controller.snapshot()["state"]
     assert state["temperature_warning"].startswith("Outside air is 31.0°C")
     assert "cooling below the limit may not be possible" in state["temperature_warning"]
-    assert state["led_override_pct"] == 30.0
-    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 30.0
-    assert controller.store.get()["temperature_led_override"]["current_pct"] == 30.0
+    assert state["led_override_pct"] == 20.0
+    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 20.0
+    assert controller.store.get()["temperature_led_override"]["current_pct"] == 20.0
 
     TemperatureProtectionClient.status_data["temp_c"] = 29.4
     # A new controller instance must recover the saved LED level after a restart.
@@ -262,9 +262,21 @@ def test_led_dims_after_fan_max_hold_when_outside_is_cool(tmp_path, monkeypatch)
     controller._tick(controller.store.get())
     state = controller.snapshot()["state"]
     assert state["fan_command"] == 80
-    assert state["led_override_pct"] == 30.0
+    assert state["led_override_pct"] == 20.0
     assert "temporarily reduced" in state["temperature_warning"]
-    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 30.0
+    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 20.0
+
+
+def test_temperature_protection_halves_led_output(tmp_path):
+    for index, initial_pct in enumerate((50.0, 100.0)):
+        controller = make_temperature_controller(tmp_path / str(index))
+        controller.store.update({"led": {"0": {"day": initial_pct}}})
+        TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] = initial_pct
+        TemperatureProtectionClient.status_data["temp_out_c"] = 31.0
+
+        controller._tick(controller.store.get())
+
+        assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == initial_pct / 2
 
 
 def test_temperature_protection_never_dims_led_below_20_percent(tmp_path, monkeypatch):
@@ -299,10 +311,10 @@ def test_manual_led_change_restarts_temperature_reduction_from_new_level(tmp_pat
     now[0] += 91.0
     controller._tick(controller.store.get())
 
-    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 35.0
+    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 22.5
     override = controller.store.get()["temperature_led_override"]
     assert override["base_pct"] == 45.0
-    assert override["current_pct"] == 35.0
+    assert override["current_pct"] == 22.5
 
 
 def test_controller_enforces_zero_led_in_both_night_modes(tmp_path):
