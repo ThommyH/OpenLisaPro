@@ -152,6 +152,25 @@ class FanPidController:
         enabled = bool(cfg.get("enabled"))
         led_mode = "day" if mode in ("day", "day_silent") else "night"
         saved_led_override = cfg.get("temperature_led_override")
+        current_temp_key = (int(phase_id), led_mode)
+        if isinstance(saved_led_override, dict):
+            try:
+                saved_key = (int(saved_led_override["phase_id"]), str(saved_led_override["mode"]))
+                saved_base = float(saved_led_override["base_pct"])
+            except (KeyError, TypeError, ValueError):
+                saved_key = None
+                saved_base = None
+            configured_base = self._temperature_led_base(cfg, phases, phase_id, led_mode)
+            if (
+                saved_key == current_temp_key
+                and configured_base is not None
+                and saved_base is not None
+                and abs(saved_base - configured_base) >= 0.01
+            ):
+                # The user changed the configured LED level while a temperature
+                # override was active. Treat the new level as the reduction baseline.
+                self._clear_temperature_led_override()
+                saved_led_override = None
         if self._temp_led_key is None and isinstance(saved_led_override, dict):
             try:
                 self._temp_led_key = (int(saved_led_override["phase_id"]), str(saved_led_override["mode"]))
@@ -175,7 +194,6 @@ class FanPidController:
             and temperature_outside is not None
             and temperature_outside >= temperature_limit
         )
-        current_temp_key = (int(phase_id), led_mode)
         if self._temp_led_key is not None and self._temp_led_key != current_temp_key:
             self._restore_temperature_led(phases, cfg)
         if temperature_limit is None or temperature_inside is None:
@@ -584,8 +602,16 @@ class FanPidController:
         base = self._temperature_led_base(cfg, phases, phase_id, led_mode)
         if base is not None:
             self._write_temperature_led(phases, phase_id, led_mode, base)
+        self._clear_temperature_led_override()
+
+    def reset_temperature_led_override(self) -> None:
+        """Forget a temporary dimming level after a manual LED setting save."""
+        self._clear_temperature_led_override()
+
+    def _clear_temperature_led_override(self) -> None:
         self._temp_led_pct = None
         self._temp_led_key = None
+        self._last_temp_led_at = None
         self.store.update({"temperature_led_override": None})
 
     def _reduce_temperature_led(

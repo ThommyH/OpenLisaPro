@@ -178,6 +178,7 @@ def create_app(
             pct = _commanded_led_pct(cfg.get("led"))
             try:
                 _apply_led_to_device(cfg.get("led") or {}, float(pct))
+                controller.reset_temperature_led_override()
             except Exception as exc:  # noqa: BLE001 — local save should still succeed
                 led_error = str(exc)
         schedule_error = None
