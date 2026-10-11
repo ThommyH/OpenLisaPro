@@ -63,7 +63,7 @@ HOST=127.0.0.1 PORT=5050 LISA_PRO_URL=http://192.168.1.50 uv run lisa-pro-ui
 
 ### Docker
 
-Build and run the container, mounting a volume to preserve local control settings:
+Build and run the container, mounting a volume to preserve local control settings. `make build` builds the Dockerfile and tags the image with the project version and `latest`, embedding the current Git commit for the build status check. Override `REGISTRY` or `IMAGE_NAME` to use a different image destination. You can also build manually:
 
 ```bash
 docker build -t lisa-pro-ui:latest .
