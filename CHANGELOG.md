@@ -2,6 +2,14 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.27] - 2026-10-11
+
+### Changed
+
+- Start soft-temperature fan boosts at 5 percentage points and add 10 points each minute while temperature is flat or rising; back off only after a measurable temperature decrease.
+- Explain the soft-temperature boost behavior on hover in the stage controls.
+- Expand controller tests for rising, flat, falling, and capped temperature responses.
+
 ## [0.1.26] - 2026-10-11
 
 ### Fixed

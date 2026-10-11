@@ -9,6 +9,7 @@ The browser communicates with the local Flask app, which proxies requests to the
 - Monitor inside and outside temperature, humidity, dew point, VPD, grow stage, and device status.
 - Configure per-stage fan limits, VPD targets, temperature limits, LED levels, and light schedules.
 - Optionally control exhaust fan speed with a local PID loop and temperature protection.
+- Gradually boost fan speed above a stage's soft temperature limit until temperature starts falling, with a per-stage boost cap.
 - Review a two-day fan and VPD chart, or page through 14 days of controller flow changes with weekday, date, time, and fan request details.
 - Use `LisaProClient` to access the device API from Python.
 

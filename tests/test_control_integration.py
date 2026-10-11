@@ -100,7 +100,7 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
             },
         )
 
-    saved = save_settings(fan_min=10, fan_max=70, vpd_min=0.4, soft_max=24, boost=8)
+    saved = save_settings(fan_min=10, fan_max=70, vpd_min=0.4, soft_max=24, boost=30)
     assert saved.status_code == 200
     device_phase = FakeLisaProClient.phases[0]
     assert device_phase["settings"]["day"]["fan_min"] == 10.0
@@ -113,10 +113,10 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
     controller._tick(first)
     hot_state = client.get("/api/control").get_json()["state"]
     assert hot_state["temperature_soft_triggered"] is True
-    assert hot_state["temperature_adjustment_pct"] == 4.0
+    assert hot_state["temperature_adjustment_pct"] == 5.0
     assert hot_state["fan_ramp_target"] > hot_state["fan_vpd_request"]
 
-    for expected_boost in (6.0, 8.0):
+    for expected_boost in (15.0, 25.0):
         controller._soft_temperature_observed_at = time.time() - 61
         controller._soft_temperature_observed_c = 26.0
         controller._tick(controller.store.get())
@@ -124,9 +124,9 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
         assert rising_state["temperature_soft_triggered"] is True
         assert rising_state["temperature_adjustment_pct"] == expected_boost
 
-    # If temperature stays flat, each observation backs the correction down,
-    # but maintains a small boost while the soft limit is still exceeded.
-    for expected_boost in (6.0, 4.0, 2.0):
+    # Flat temperature means the current boost has not cooled the growbox
+    # below the soft limit yet, so continue increasing until capped.
+    for expected_boost in (30.0, 30.0, 30.0):
         controller._soft_temperature_observed_at = time.time() - 61
         controller._soft_temperature_observed_c = 27.0
         controller._tick(controller.store.get())
@@ -135,18 +135,26 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
         assert steady_state["temperature_adjustment_pct"] == expected_boost
         assert steady_state["fan_ramp_target"] > steady_state["fan_vpd_request"]
 
+    # Back off only after a measured decrease across the observation window.
+    FakeLisaProClient.current_status["temp_c"] = 26.7
+    controller._soft_temperature_observed_at = time.time() - 61
+    controller._soft_temperature_observed_c = 27.0
+    controller._tick(controller.store.get())
+    falling_state = client.get("/api/control").get_json()["state"]
+    assert falling_state["temperature_adjustment_pct"] == 20.0
+
     # Lowering the soft maximum creates a fresh attempt immediately, even
     # though the prior temperature observation was flat.
-    saved = save_settings(fan_min=10, fan_max=70, vpd_min=0.4, soft_max=22, boost=8)
+    saved = save_settings(fan_min=10, fan_max=70, vpd_min=0.4, soft_max=22, boost=30)
     assert saved.status_code == 200
     controller._tick(saved.get_json()["config"])
     retried = client.get("/api/control").get_json()["state"]
     assert retried["temperature_soft_triggered"] is True
-    assert retried["temperature_adjustment_pct"] == 4.0
+    assert retried["temperature_adjustment_pct"] == 5.0
 
     # Raising the VPD target changes the fan request; raising the soft ceiling
     # turns off soft-temperature adjustment without disturbing the settings save.
-    saved = save_settings(fan_min=10, fan_max=70, vpd_min=1.3, soft_max=30, boost=8)
+    saved = save_settings(fan_min=10, fan_max=70, vpd_min=1.3, soft_max=30, boost=30)
     assert saved.status_code == 200
     controller._tick(saved.get_json()["config"])
     vpd_state = client.get("/api/control").get_json()["state"]
@@ -157,7 +165,7 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
 
     # Change the configured band and thresholds back and forth; device values
     # and the computed temperature correction follow each new saved version.
-    saved = save_settings(fan_min=20, fan_max=60, vpd_min=0.4, soft_max=24, boost=8)
+    saved = save_settings(fan_min=20, fan_max=60, vpd_min=0.4, soft_max=24, boost=30)
     assert saved.status_code == 200
     controller._tick(saved.get_json()["config"])
     restored = client.get("/api/control").get_json()["state"]
@@ -169,11 +177,11 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
     assert device_settings["fan_min"] == device_settings["fan_max"] == restored["fan_command"]
     assert device_settings["vpd_min"] == 0.4
     assert restored["temperature_soft_triggered"] is True
-    assert restored["temperature_adjustment_pct"] == 4.0
+    assert restored["temperature_adjustment_pct"] == 5.0
     assert restored["fan_vpd_request"] == 20.0
     assert restored["fan_ramp_target"] > restored["fan_vpd_request"]
 
-    saved = save_settings(fan_min=10, fan_max=70, vpd_min=0.4, soft_max=24, boost=8)
+    saved = save_settings(fan_min=10, fan_max=70, vpd_min=0.4, soft_max=24, boost=30)
     controller._tick(saved.get_json()["config"])
     back_again = client.get("/api/control").get_json()["state"]
     back_config = client.get("/api/control").get_json()["config"]

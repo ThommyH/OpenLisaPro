@@ -29,9 +29,9 @@ TEMPERATURE_LED_STEP_PCT = 10.0
 TEMPERATURE_RECOVERY_MARGIN_C = 0.5
 SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 60.0
 SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C = 0.1
-SOFT_TEMPERATURE_BOOST_STEP_PCT = 2.0
-SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 4.0
-SOFT_TEMPERATURE_MIN_BOOST_PCT = 2.0
+SOFT_TEMPERATURE_BOOST_STEP_PCT = 10.0
+SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 5.0
+SOFT_TEMPERATURE_MIN_BOOST_PCT = 5.0
 PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
 
 PHASE_NAME_HINTS = (
@@ -680,10 +680,9 @@ class FanPidController:
     ) -> float:
         """Adjust the extra fan boost gradually from the observed temperature trend.
 
-        Start with a small boost. Every observation window, add a step only if
-        temperature is still rising; if it is flat or falling, back the boost
-        off so soft control does not keep pushing fan to its limit without a
-        measured temperature response.
+        Start with a small boost. Increase whenever the temperature is flat or
+        rising; only reduce after an observation window confirms that it is
+        falling. This keeps trying to bring temperature below the soft limit.
         """
         if not hot or temperature_c is None or soft_max_c is None:
             self._reset_soft_temperature_boost()
@@ -718,12 +717,12 @@ class FanPidController:
         elif now - self._soft_temperature_observed_at >= SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S:
             previous_temp = self._soft_temperature_observed_c
             trend = float(temperature_c) - float(previous_temp if previous_temp is not None else temperature_c)
-            if trend > SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C:
+            if trend >= -SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C:
                 self._soft_temperature_boost_pct = min(
                     target_boost,
                     self._soft_temperature_boost_pct + SOFT_TEMPERATURE_BOOST_STEP_PCT,
                 )
-            else:
+            elif trend < -SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C:
                 self._soft_temperature_boost_pct = max(
                     min(SOFT_TEMPERATURE_MIN_BOOST_PCT, target_boost),
                     self._soft_temperature_boost_pct - SOFT_TEMPERATURE_BOOST_STEP_PCT,
