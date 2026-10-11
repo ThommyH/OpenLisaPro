@@ -963,6 +963,22 @@ input:focus {
   border-color: color-mix(in srgb, var(--leaf) 55%, var(--line));
 }
 
+.soft-temperature-limits > strong,
+.soft-temperature-limits > label:not(.soft-temperature-toggle),
+.soft-temperature-limits > span {
+  transition: opacity 120ms ease;
+}
+
+.soft-temperature-limits.is-disabled > strong,
+.soft-temperature-limits.is-disabled > label:not(.soft-temperature-toggle),
+.soft-temperature-limits.is-disabled > span {
+  opacity: 0.42;
+}
+
+.soft-temperature-limits.is-disabled input[data-soft-temperature-phase] {
+  cursor: not-allowed;
+}
+
 .flow-event-details {
   margin: 0 1rem 1rem;
   border-top: 1px solid var(--line);

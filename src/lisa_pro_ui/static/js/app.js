@@ -776,6 +776,7 @@
         </div>
         ${rows}`;
       root.appendChild(card);
+      syncSoftTemperatureControls(card);
     });
     root.querySelectorAll("[data-reset-stage]").forEach((button) => {
       button.addEventListener("click", () =>
@@ -812,6 +813,24 @@
       input.addEventListener("input", markControlDirty);
     });
     bindDualRanges(root);
+  }
+
+  function syncSoftTemperatureControls(container) {
+    container.querySelectorAll("[data-soft-temperature-enabled-phase]").forEach((toggle) => {
+      const limits = toggle.closest(".soft-temperature-limits");
+      if (!limits) return;
+      const sync = () => {
+        limits.classList.toggle("is-disabled", !toggle.checked);
+        limits.querySelectorAll("input[data-soft-temperature-phase]").forEach((input) => {
+          input.disabled = !toggle.checked;
+        });
+      };
+      toggle.addEventListener("change", () => {
+        sync();
+        markControlDirty();
+      });
+      sync();
+    });
   }
 
   function collectKindLimits(kind, fields) {
