@@ -27,7 +27,13 @@ Build Docker images tagged with the package version and `latest`:
 make build
 ```
 
-The Makefile defaults to `192.168.178.69:5555/open-lisa-pro`. Override `REGISTRY` and `IMAGE_NAME` as needed. `APP_GIT_COMMIT` is embedded in the image so the dashboard can report whether it is running the latest `main` commit.
+To publish both tags to the configured registry, run:
+
+```bash
+make publish
+```
+
+The default registry (`192.168.178.69:5555`) serves plain HTTP. `make publish` uses a temporary BuildKit builder configured with `http = true`, then removes that builder. This avoids the Docker daemon's HTTPS-only error without changing Docker Desktop or daemon settings. Use `make build` for a local image build; use `make publish` to build and push. Override `REGISTRY` and `IMAGE_NAME` as needed. `APP_GIT_COMMIT` is embedded in the image so the dashboard can report whether it is running the latest `main` commit.
 
 ## Release checklist
 
@@ -35,7 +41,7 @@ The Makefile defaults to `192.168.178.69:5555/open-lisa-pro`. Override `REGISTRY
 2. Update the README, specifications, and [`CHANGELOG.md`](../CHANGELOG.md) when user-visible behavior changes.
 3. Run `uv sync --group dev`, `uv run python -m pytest -q`, and `uv build`.
 4. Commit the release changes and create an annotated tag matching the version, for example `0.1.19`.
-5. Build the Docker image after committing so `APP_GIT_COMMIT` points at the release commit. Push the versioned image and `latest` to the configured registry when publishing the container.
+5. Build and publish the Docker image after committing so `APP_GIT_COMMIT` points at the release commit: `make publish` pushes the versioned image and `latest` to the configured registry.
 6. Push the commit and tag, then publish the GitHub release with concise release notes.
 
 ## Project layout

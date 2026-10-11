@@ -5,9 +5,16 @@ IMAGE = $(REGISTRY)/$(IMAGE_NAME)
 VERSION ?= $(shell sed -n 's/^version = "\([^"]*\)"/\1/p' pyproject.toml)
 APP_GIT_COMMIT ?= $(shell git rev-parse --short=7 HEAD 2>/dev/null || printf unknown)
 
-.PHONY: build docker-build
+.PHONY: build docker-build publish docker-publish
 
 build: docker-build
 
 docker-build:
 	$(DOCKER) build --build-arg APP_GIT_COMMIT=$(APP_GIT_COMMIT) -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Dockerfile .
+
+# The local registry speaks plain HTTP. BuildKit gets an isolated registry
+# configuration from scripts/publish-image.sh; Docker daemon settings stay untouched.
+publish: docker-publish
+
+docker-publish:
+	DOCKER="$(DOCKER)" REGISTRY="$(REGISTRY)" IMAGE_NAME="$(IMAGE_NAME)" VERSION="$(VERSION)" APP_GIT_COMMIT="$(APP_GIT_COMMIT)" ./scripts/publish-image.sh

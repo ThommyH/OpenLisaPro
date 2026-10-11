@@ -21,6 +21,7 @@ OpenLisaPro is a Python 3.9+ Flask control panel and Python HTTP client for the 
 - Install dependencies with `uv sync`.
 - Run the app with `LISA_PRO_URL=http://<device-ip> uv run lisa-pro-ui`. The UI listens on port 5050 by default.
 - Run the test suite with `uv run python -m pytest`.
+- Build a local Docker image with `make build`; publish to the default plain-HTTP registry with `make publish`. The publish script uses a temporary BuildKit builder configured for HTTP and cleans it up afterward; do not use `docker push` or change the Docker daemon's insecure registry settings for this registry.
 - Environment settings: `LISA_PRO_URL` selects the device URL, `LISA_PRO_DATA` selects the local config directory, and `HOST`, `PORT`, and `FLASK_DEBUG` control Flask serving. Local settings are written to `control.json` under the configured data directory.
 
 ## Implementation conventions
