@@ -346,22 +346,23 @@ class FanPidController:
         # Positive error (need higher VPD) → higher exhaust within [fan_min, fan_max].
         desired = self._map_pid_to_fan(pid_out, fan_min, fan_max, error, deadband=deadband)
 
-        # Low-gain proportional temperature correction only operates while
-        # inside VPD is in its configured band. Hard maximum protection below
-        # takes priority, and the adjustment stays inside the stage fan limits.
+        # Soft temperature control is additive: it can raise exhaust above the
+        # VPD request, but never lower that request. A warm correction applies
+        # even when VPD is outside its band. Hard maximum protection below
+        # still takes priority.
         temperature_adjustment = 0.0
         soft_min = (temperature_soft_limits or {}).get("min_temp_c")
         soft_max = (temperature_soft_limits or {}).get("max_temp_c")
-        if (
+        soft_temperature_hot = (
             not temperature_active
             and temperature_inside is not None
-            and vpd_min <= float(vpd_inside) <= vpd_max
-        ):
+            and soft_max is not None
+            and temperature_inside > soft_max
+        )
+        if not temperature_active and temperature_inside is not None:
             temperature_error = 0.0
-            if soft_max is not None and temperature_inside > soft_max:
+            if soft_temperature_hot:
                 temperature_error = temperature_inside - soft_max
-            elif soft_min is not None and temperature_inside < soft_min:
-                temperature_error = temperature_inside - soft_min
             temperature_weight = max(
                 0.0, min(20.0, float(pid_cfg.get("temperature_weight_pct_per_c", 2.0)))
             )
@@ -376,7 +377,7 @@ class FanPidController:
             self._prev_vpd is not None
             and ((error > 0 and float(vpd_inside) > self._prev_vpd + 0.01) or (error < 0 and float(vpd_inside) < self._prev_vpd - 0.01))
         )
-        if not temperature_active and (not reachable or (at_ceiling and stuck and not improving)) and abs(error) > deadband:
+        if not temperature_active and not soft_temperature_hot and (not reachable or (at_ceiling and stuck and not improving)) and abs(error) > deadband:
             if self._unreachable_since is None:
                 self._unreachable_since = now
             hold = float(pid_cfg.get("unreachable_hold_s", 90))

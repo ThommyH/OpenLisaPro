@@ -661,7 +661,7 @@
             <label>Maximum °C
               <input type="number" min="5" max="50" step="0.5" placeholder="Off" value="${softTemperature.max_temp_c ?? ""}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_temp_c" aria-label="${phase.name || `Phase ${id}`} soft maximum temperature in Celsius" />
             </label>
-            <span>Adjusts fan speed only while VPD is within range.</span>
+            <span>The maximum adds fan speed even if VPD is outside range. Temperature control never lowers the VPD fan request.</span>
           </div>
           <p>The hard maximum temperature remains a separate safety override. Day runs from lights on to lights off, including overnight schedules.</p>
         </div>

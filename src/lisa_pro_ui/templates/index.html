@@ -220,15 +220,15 @@
               <div class="flow-outcome" data-flow-branch="pid-correction"><b>No, VPD is below target</b><span>PID adds positive correction to the fan minimum, capped at the configured maximum.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>requested speed</span></div>
-            <div class="flow-decision" data-flow-step="soft-temperature-check"><strong>Is VPD in range and temperature outside its soft band?</strong></div>
+            <div class="flow-decision" data-flow-step="soft-temperature-check"><strong>Is inside temperature above the soft maximum?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Apply a small correction</b><span>Warm conditions add fan speed; cool conditions ease it toward the configured minimum. The global temperature weight controls the correction.</span></div>
-              <div class="flow-outcome" data-flow-branch="soft-temperature-hold"><b>No</b><span>Keep the VPD fan request unchanged. Soft temperature control waits until VPD is within range.</span></div>
+              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Add a small fan correction</b><span>Above the soft maximum, add fan speed even when VPD is outside its band. Temperature control never reduces the VPD fan request. The global temperature weight controls the correction.</span></div>
+              <div class="flow-outcome" data-flow-branch="soft-temperature-hold"><b>No</b><span>Keep the VPD fan request unchanged. A soft minimum never lowers the VPD request. The hard maximum remains a separate safety override.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>combined request</span></div>
             <div class="flow-node" data-flow-step="apply-ramp">
               <span class="flow-index">4</span>
-              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If outside dew point makes the target unreachable, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps. The outside-air limit can trigger a back-off before the fan reaches its ceiling.</span></div>
+              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If outside dew point makes the target unreachable, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps unless the soft maximum temperature is exceeded. The outside-air limit can trigger a back-off before the fan reaches its ceiling.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-node flow-result" data-flow-step="write-command">
