@@ -267,6 +267,21 @@ def test_led_dims_after_fan_max_hold_when_outside_is_cool(tmp_path, monkeypatch)
     assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 30.0
 
 
+def test_temperature_protection_never_dims_led_below_20_percent(tmp_path, monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr("lisa_pro_ui.controller.time.time", lambda: now[0])
+    controller = make_temperature_controller(tmp_path)
+    TemperatureProtectionClient.status_data["temp_out_c"] = 31.0
+
+    for _ in range(5):
+        controller._tick(controller.store.get())
+        now[0] += 91.0
+
+    assert controller.snapshot()["state"]["led_override_pct"] == 20.0
+    assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 20.0
+    assert controller.store.get()["temperature_led_override"]["current_pct"] == 20.0
+
+
 def test_controller_enforces_zero_led_in_both_night_modes(tmp_path):
     controller = make_temperature_controller(tmp_path)
     controller.store.update({"enabled": False, "temperature_limits": {}})
