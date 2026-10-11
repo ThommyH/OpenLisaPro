@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.23] - 2026-10-11
+
+### Changed
+
+- Scale the fan and VPD chart height with the available window space.
+
 ## [0.1.22] - 2026-10-11
 
 ### Changed

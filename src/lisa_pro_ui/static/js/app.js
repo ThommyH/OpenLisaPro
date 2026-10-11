@@ -1003,7 +1003,7 @@
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
     const cssW = canvas.parentElement?.clientWidth || canvas.clientWidth || 960;
-    const cssH = window.matchMedia("(max-width: 900px)").matches ? 320 : 380;
+    const cssH = canvas.clientHeight || (window.matchMedia("(max-width: 900px)").matches ? 220 : 300);
     canvas.width = Math.floor(cssW * dpr);
     canvas.height = Math.floor(cssH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);

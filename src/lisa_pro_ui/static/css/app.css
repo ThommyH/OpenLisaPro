@@ -1427,13 +1427,12 @@ input:focus {
   opacity: 0.35;
 }
 .chart-series-toggle[aria-pressed="true"]::before { opacity: 1; }
-}
 
 #pidChart {
   min-width: 0 !important;
   width: 100%;
   max-width: 100%;
-  height: 380px;
+  height: min(340px, max(210px, 38vh));
   display: block;
   border-top: 1px solid var(--line);
   border-radius: 0 0 0.8rem 0.8rem;
@@ -1443,7 +1442,7 @@ input:focus {
   .chart-header, .chart-toolbar { align-items: stretch; flex-direction: column; }
   .chart-ranges, .chart-navigation { display: grid; grid-template-columns: repeat(auto-fit, minmax(3.3rem, 1fr)); }
   .chart-control { padding-inline: 0.45rem; }
-  #pidChart { height: 320px; }
+  #pidChart { height: min(260px, max(175px, 48vw)); }
 }
 
 .split-forms {
