@@ -405,7 +405,7 @@ class FanPidController:
             max_available_pct=max(0.0, fan_max - desired),
             max_stage_boost_pct=max(
                 0.0,
-                min(100.0, float((temperature_soft_limits or {}).get("max_boost_pct", 100.0))),
+                min(100.0, float((temperature_soft_limits or {}).get("max_boost_pct", 20.0))),
             ),
             weight_pct_per_c=max(
                 0.0, min(20.0, float(pid_cfg.get("temperature_weight_pct_per_c", 15.0)))

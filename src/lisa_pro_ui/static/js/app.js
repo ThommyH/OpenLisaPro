@@ -839,7 +839,7 @@
               <input type="number" min="5" max="50" step="0.5" placeholder="Off" value="${softTemperature.max_temp_c ?? ""}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_temp_c" aria-label="${phase.name || `Phase ${id}`} soft maximum temperature in Celsius" />
             </label>
             <label>Maximum fan boost
-              <input type="number" min="0" max="100" step="1" value="${softTemperature.max_boost_pct ?? 100}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_boost_pct" aria-label="${phase.name || `Phase ${id}`} maximum soft temperature fan boost in percent" />
+              <input type="number" min="0" max="100" step="1" value="${softTemperature.max_boost_pct ?? 20}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_boost_pct" aria-label="${phase.name || `Phase ${id}`} maximum soft temperature fan boost in percent" />
             </label>
             <span>Caps the added fan speed in percentage points. The global temperature weight and stage fan limit also apply.</span>
           </div>
