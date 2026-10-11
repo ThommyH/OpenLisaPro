@@ -1059,7 +1059,7 @@
   $("btnControlReset").addEventListener("click", () =>
     withBusy(async () => {
       const confirmed = await confirmAction(
-        "Reset all control settings? This disables the local PID, clears its overrides, and restores the growbox factory phase presets.",
+        "Reset all control settings, restore the default PID state, clear overrides, and restore the growbox factory phase presets?",
       );
       if (!confirmed) return;
       const res = await api("/api/control/reset", {

@@ -7,7 +7,7 @@ from lisa_pro_ui.config_store import DEFAULT_PID, ConfigStore
 def test_defaults_and_persist(tmp_path: Path):
     store = ConfigStore(tmp_path / "control.json")
     cfg = store.get()
-    assert cfg["enabled"] is False
+    assert cfg["enabled"] is True
     assert cfg["pid"]["kp"] == DEFAULT_PID["kp"]
 
     store.update(
@@ -167,3 +167,12 @@ def test_stage_temperature_limits_normalize_and_persist(tmp_path: Path):
 
     store.update({"temperature_limits": {"0": {"max_temp_c": ""}}})
     assert store.get()["temperature_limits"] == {}
+
+
+def test_pid_default_can_be_disabled_with_environment(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("LISA_PRO_PID_ENABLED", "0")
+    store = ConfigStore(tmp_path / "control.json")
+    assert store.get()["enabled"] is False
+
+    store.reset()
+    assert store.get()["enabled"] is False

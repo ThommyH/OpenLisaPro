@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 from copy import deepcopy
 from pathlib import Path
@@ -29,7 +30,7 @@ DEFAULT_PID = {
 }
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "enabled": False,
+    "enabled": True,
     "vpd_targets": {},  # phase_id -> mode -> {vpd_min, vpd_max}
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
     "temperature_limits": {},  # phase_id -> {max_temp_c}
@@ -39,11 +40,20 @@ DEFAULT_CONFIG: dict[str, Any] = {
 }
 
 
+def default_config() -> dict[str, Any]:
+    """Return defaults, allowing deployments to opt out of enabled PID."""
+    config = deepcopy(DEFAULT_CONFIG)
+    value = os.environ.get("LISA_PRO_PID_ENABLED")
+    if value is not None:
+        config["enabled"] = value.strip().lower() not in {"0", "false", "no", "off", "disabled"}
+    return config
+
+
 class ConfigStore:
     def __init__(self, path: Path) -> None:
         self.path = path
         self._lock = threading.RLock()
-        self._data = deepcopy(DEFAULT_CONFIG)
+        self._data = default_config()
         self._legacy_vpd: dict[str, float] | None = None
         self.load()
 
@@ -52,12 +62,12 @@ class ConfigStore:
             if self.path.exists():
                 try:
                     raw = json.loads(self.path.read_text(encoding="utf-8"))
-                    self._data = self._merge(DEFAULT_CONFIG, raw if isinstance(raw, dict) else {})
+                    self._data = self._merge(default_config(), raw if isinstance(raw, dict) else {})
                 except (OSError, json.JSONDecodeError):
-                    self._data = deepcopy(DEFAULT_CONFIG)
+                    self._data = default_config()
                     self._legacy_vpd = None
             else:
-                self._data = deepcopy(DEFAULT_CONFIG)
+                self._data = default_config()
                 self._legacy_vpd = None
             return deepcopy(self._data)
 
@@ -75,7 +85,7 @@ class ConfigStore:
     def reset(self) -> dict[str, Any]:
         """Restore local control settings to built-in defaults and persist them."""
         with self._lock:
-            self._data = deepcopy(DEFAULT_CONFIG)
+            self._data = default_config()
             self._legacy_vpd = None
             self.save()
             return deepcopy(self._data)
@@ -295,7 +305,7 @@ class ConfigStore:
         out.setdefault("temperature_limits", {})
         out.setdefault("temperature_led_override", None)
         out.setdefault("led", {})
-        out.setdefault("enabled", False)
+        out.setdefault("enabled", True)
         if not isinstance(out.get("temperature_limits"), dict):
             out["temperature_limits"] = {}
         out["pid"] = self._coerce_global_pid(out.get("pid") if isinstance(out.get("pid"), dict) else {})

@@ -8,12 +8,12 @@ The web app runs on your own computer or server. It talks to the growbox over it
 
 - Shows inside and outside temperature, relative humidity, dew point, and VPD, along with the current grow stage and device status.
 - Lets you manage stage-specific maximum temperatures, VPD targets, fan limits, daytime LED levels, and light-on/light-off schedules. Night and Night silent LED power is fixed at 0%.
-- Runs an optional local PID controller for exhaust fan speed. It uses inside VPD as the control goal, estimates the ventilation limit from outside dew point at inside temperature, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
+- Runs a local PID controller for exhaust fan speed, enabled by default. It uses inside VPD as the control goal, estimates the ventilation limit from outside dew point at inside temperature, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
 - Displays the controller's current mode, status, and ramp target, with an expandable explanation of the calculation and its states.
 - Provides a chart of recent climate and fan history, and controls for growbox settings such as silent operation, door actions, and MQTT.
 - Includes `LisaProClient`, a small typed Python wrapper for the growbox API.
 
-The UI can be viewed on desktop or mobile. The PID loop can write fan settings to the connected device when enabled, so use the controller settings deliberately.
+The UI can be viewed on desktop or mobile. The PID loop is enabled for new installations and can write fan settings to the connected device. Disable it with the Control tab or set `LISA_PRO_PID_ENABLED=0` to change the default for new or reset settings.
 
 ## Screenshots
 
@@ -72,13 +72,14 @@ Open `http://<host-address>:5050` from a device that can reach the Docker host. 
 | --- | --- | --- |
 | `LISA_PRO_URL` | `http://192.168.178.242` | Growbox base URL |
 | `LISA_PRO_DATA` | `./data` | Directory for local control settings |
+| `LISA_PRO_PID_ENABLED` | `1` | Default local PID state for new/reset settings; set to `0` to disable by default |
 | `HOST` | `0.0.0.0` | Address for the web server to bind to |
 | `PORT` | `5050` | Web server port |
 | `FLASK_DEBUG` | `0` | Enable Flask debug mode when set to `1` |
 
 ## Using local fan control
 
-Open the **Control** tab to configure per-stage VPD targets and fan limits. The **Chart** tab shows recent history, and the **Device** tab contains growbox settings. PID tuning settings are collapsed by default. Expand them to adjust the gains, ramp rate, update interval, and deadband.
+Open the **Control** tab to configure per-stage VPD targets and fan limits. Local PID is enabled by default for new installations. Set `LISA_PRO_PID_ENABLED=0` to make the default disabled. Existing saved control settings and the Control tab toggle take precedence. The **Chart** tab shows recent history, and the **Device** tab contains growbox settings. PID tuning settings are collapsed by default. Expand them to adjust the gains, ramp rate, update interval, and deadband.
 
 Enable local PID control to let OpenLisaPro command the exhaust fan. The live status shows the current fan command; while it is ramping, it also shows the target speed. The configured light-on and light-off times for the active stage determine whether the controller uses day or night settings. The LEDs' current on/off state does not define the scheduled day/night mode.
 

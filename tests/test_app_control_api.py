@@ -12,7 +12,7 @@ def test_control_get_and_post(tmp_path: Path):
     body = got.get_json()
     assert "config" in body
     assert "state" in body
-    assert body["config"]["enabled"] is False
+    assert body["config"]["enabled"] is True
     assert "kp" in body["config"]["pid"]
 
     saved = client.post(
