@@ -181,53 +181,53 @@
         <details class="fan-flow-details">
           <summary>How fan speed is calculated</summary>
           <div class="fan-flowchart" aria-label="Fan speed calculation flowchart">
-            <div class="flow-node">
+            <div class="flow-node" data-flow-step="resolve-stage">
               <span class="flow-index">1</span>
               <div><strong>Resolve stage and mode</strong><span>Use the active grow stage and its lights-on/off times. If device Silent mode is active, use Day silent during the day interval or Night silent during the night interval.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
-            <div class="flow-decision"><strong>Is local fan PID enabled?</strong></div>
+            <div class="flow-decision" data-flow-step="pid-enabled"><strong>Is local fan PID enabled?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome"><b>No</b><span>Restore the stage’s configured fan min/max band. PID does not set a fan command.</span></div>
-              <div class="flow-outcome"><b>Yes</b><span>Continue using this stage and mode’s VPD target and fan limits.</span></div>
+              <div class="flow-outcome" data-flow-branch="pid-disabled"><b>No</b><span>Restore the stage’s configured fan min/max band. PID does not set a fan command.</span></div>
+              <div class="flow-outcome" data-flow-branch="pid-active"><b>Yes</b><span>Continue using this stage and mode’s VPD target and fan limits.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>PID enabled</span></div>
-            <div class="flow-node">
+            <div class="flow-node" data-flow-step="measure-vpd">
               <span class="flow-index">2</span>
               <div><strong>Measure inside VPD</strong><span>Calculate from inside temperature and dew point. If dew point is missing, use device VPD, then temperature and humidity. If all are missing, leave the device setting unchanged and retry next cycle.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
-            <div class="flow-decision"><strong>Is inside temperature above this stage’s maximum?</strong></div>
+            <div class="flow-decision" data-flow-step="temperature-check"><strong>Is inside temperature above this stage’s maximum?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome"><b>Yes · Temperature protection</b><span>Prioritize cooling and command the exhaust fan to its configured maximum. If outside temperature is at or above the limit, reduce LED power immediately and show a warning. Otherwise, reduce LED power in 10% steps if temperature remains high for 90 seconds at maximum fan speed.</span></div>
-              <div class="flow-outcome"><b>No</b><span>Continue with the VPD target and outside dew point estimate.</span></div>
+              <div class="flow-outcome" data-flow-branch="temperature-active"><b>Yes · Temperature protection</b><span>Command maximum fan speed. If outside temperature is at or above the limit, halve LED power immediately and show a warning. Otherwise, after 90 seconds at maximum fan speed, reduce LED power by 10 percentage points every 90 seconds. Keep at least 20% LED output and never reduce below 25% of the original setting.</span></div>
+              <div class="flow-outcome" data-flow-branch="temperature-normal"><b>No</b><span>Continue with the VPD target and outside dew point estimate.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>within limit · continue with VPD control</span></div>
-            <div class="flow-node">
+            <div class="flow-node" data-flow-step="estimate-limit">
               <span class="flow-index">3</span>
               <div><strong>Estimate the ventilation limit from outside dew point</strong><span>Evaluate outside-air moisture at the inside temperature to find the highest VPD ventilation can achieve. If outside dew point is unavailable, keep the selected target.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
-            <div class="flow-decision"><strong>Is the selected target above that limit?</strong></div>
+            <div class="flow-decision" data-flow-step="target-check"><strong>Is the selected target above that limit?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome"><b>Yes · Outside-air limited</b><span>Cap the effective target at the ventilation limit and show “Outside-air limited.” Do not drive the fan to chase the higher target.</span></div>
-              <div class="flow-outcome"><b>No</b><span>Keep the selected target.</span></div>
+              <div class="flow-outcome" data-flow-branch="target-limited"><b>Yes · Outside-air limited</b><span>Cap the effective target at the ventilation limit and show “Outside-air limited.” Do not drive the fan to chase the higher target.</span></div>
+              <div class="flow-outcome" data-flow-branch="target-reachable"><b>No</b><span>Keep the selected target.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>effective target</span></div>
-            <div class="flow-decision"><strong>Is error within the deadband?</strong></div>
+            <div class="flow-decision" data-flow-step="deadband-check"><strong>Is error within the deadband?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome"><b>Yes</b><span>Request the configured fan minimum.</span></div>
-              <div class="flow-outcome"><b>No, VPD is below target</b><span>PID adds positive correction to the fan minimum, capped at the configured maximum.</span></div>
+              <div class="flow-outcome" data-flow-branch="within-deadband"><b>Yes</b><span>Request the configured fan minimum.</span></div>
+              <div class="flow-outcome" data-flow-branch="pid-correction"><b>No, VPD is below target</b><span>PID adds positive correction to the fan minimum, capped at the configured maximum.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>requested speed</span></div>
-            <div class="flow-node">
+            <div class="flow-node" data-flow-step="apply-ramp">
               <span class="flow-index">4</span>
               <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If outside dew point makes the target unreachable, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps. The outside-air limit can trigger a back-off before the fan reaches its ceiling.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
-            <div class="flow-node flow-result">
+            <div class="flow-node flow-result" data-flow-step="write-command">
               <span class="flow-index">5</span>
-              <div><strong>Send command to the growbox</strong><span>Write the command as fan_min = fan_max. The measured fan speed may take time to catch up.</span></div>
+              <div><strong>Send command to the growbox</strong><span>Write the command as fan_min = fan_max. The measured fan speed may take time to catch up.</span><span id="flowCommandValue" class="flow-live-value">Current command: —</span></div>
             </div>
           </div>
         </details>

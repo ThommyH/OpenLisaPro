@@ -97,3 +97,51 @@ def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypa
     assert settings["night_silent"]["led"] == 0.0
     persisted = json.loads((tmp_path / "control.json").read_text())
     assert persisted["led"]["0"]["day"] == 42.0
+
+
+def test_reset_stage_restores_factory_phase_and_keeps_other_phase(tmp_path, monkeypatch):
+    from copy import deepcopy
+    from lisa_pro_ui import app as app_module
+
+    factory = [
+        {"id": 0, "settings": {"day": {"fan_min": 20, "fan_max": 70, "vpd_min": 0.9, "vpd_max": 1.3, "led": 55}}},
+        {"id": 1, "settings": {"day": {"fan_min": 10, "fan_max": 40, "led": 25}}},
+    ]
+
+    class FakeClient:
+        phases = [
+            {"id": 0, "settings": {"day": {"fan_min": 2, "fan_max": 5, "led": 10}}},
+            {"id": 1, "settings": {"day": {"fan_min": 12, "fan_max": 35, "led": 30}}},
+        ]
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get_phases(self):
+            return {"phases": deepcopy(type(self).phases)}
+
+        def reset_phases(self):
+            type(self).phases = deepcopy(factory)
+
+        def set_phases(self, payload):
+            type(self).phases = deepcopy(payload["phases"])
+
+    monkeypatch.setattr(app_module, "LisaProClient", FakeClient)
+    app = create_app(data_dir=tmp_path, start_controller=False)
+    store = app.config["CONTROL_STORE"]
+    store.update({"fan_limits": {"0": {"day": {"fan_min": 2, "fan_max": 5}}}, "temperature_limits": {"0": {"max_temp_c": 28}}})
+
+    response = app.test_client().post("/api/control/reset-stage", json={"phase_id": 0})
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert FakeClient.phases[0] == factory[0]
+    assert FakeClient.phases[1] == {"id": 1, "settings": {"day": {"fan_min": 12, "fan_max": 35, "led": 30}}}
+    assert body["config"]["fan_limits"]["0"]["day"] == {"fan_min": 20.0, "fan_max": 70.0}
+    assert "0" not in body["config"]["temperature_limits"]

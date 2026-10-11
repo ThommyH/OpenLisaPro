@@ -568,6 +568,10 @@ input:focus {
   font-weight: 700;
 }
 
+.phase-card-head .btn {
+  flex: 0 0 auto;
+}
+
 .phase-block-title {
   margin: 0 0 0.55rem;
   color: var(--leaf);
@@ -859,6 +863,16 @@ input:focus {
   border-radius: 0.8rem;
   background: rgba(0, 0, 0, 0.12);
 }
+
+.flow-node.active-path,
+.flow-decision.active-path,
+.flow-outcome.active-path {
+  border-color: var(--leaf);
+  background: color-mix(in srgb, var(--leaf) 12%, rgba(0, 0, 0, 0.12));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--leaf) 35%, transparent);
+}
+
+.flow-live-value { color: var(--leaf) !important; font-weight: 700; }
 
 .flow-node > div,
 .flow-outcome {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import atexit
 import os
 import threading
+from copy import deepcopy
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
@@ -218,6 +219,47 @@ def create_app(
                     "phases": phases,
                     "state": controller.snapshot()["state"],
                     "led_status_pct": led_status_pct,
+                }
+            )
+        except Exception as exc:
+            return _err(exc)
+
+    @app.post("/api/control/reset-stage")
+    def control_reset_stage():
+        body = request.get_json(force=True, silent=True) or {}
+        try:
+            phase_id = int(body.get("phase_id"))
+        except (TypeError, ValueError):
+            return _err(ValueError("phase_id must be an integer"), 400)
+        try:
+            with phase_write_lock:
+                with client() as c:
+                    current_phases = c.get_phases().get("phases") or []
+                    if not any(int(p.get("id", -1)) == phase_id for p in current_phases):
+                        return _err(ValueError(f"Unknown phase id: {phase_id}"), 404)
+                    c.reset_phases()
+                    factory_phases = c.get_phases().get("phases") or []
+                    factory_phase = next(
+                        (p for p in factory_phases if int(p.get("id", -1)) == phase_id), None
+                    )
+                    if factory_phase is None:
+                        raise ValueError(f"Factory defaults do not contain phase id {phase_id}")
+                    phases = [
+                        deepcopy(factory_phase)
+                        if int(p.get("id", -1)) == phase_id
+                        else deepcopy(p)
+                        for p in current_phases
+                    ]
+                    c.set_phases({"phases": phases})
+            cfg = store.reset_stage_from_phase(phase_id, factory_phase)
+            controller.reset_temperature_led_override(phase_id)
+            return jsonify(
+                {
+                    "ok": True,
+                    "phase": factory_phase,
+                    "phases": phases,
+                    "config": cfg,
+                    "state": controller.snapshot()["state"],
                 }
             )
         except Exception as exc:

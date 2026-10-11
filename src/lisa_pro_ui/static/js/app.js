@@ -356,6 +356,7 @@
   }
 
   function updateControlLive(st, enabled) {
+    updateFanFlow(st, enabled);
     $("pidMode").textContent = MODE_LABELS[st.mode] || (st.mode || "—").replace(/_/g, " ");
     const silentButton = $("btnSilentToggle");
     silentButton.textContent = state.silentEnabled ? "Disable growbox silent mode" : "Enable growbox silent mode";
@@ -383,6 +384,48 @@
     $("pidStatus").classList.toggle("throttling", !!st.throttling);
     $("pidStatus").classList.toggle("active", !!enabled);
     if (state.status) updateClimate(state.status, st);
+  }
+
+  function updateFanFlow(st, enabled) {
+    const chart = document.querySelector(".fan-flowchart");
+    if (!chart) return;
+    chart.querySelectorAll(".active-path").forEach((el) => el.classList.remove("active-path"));
+    const mark = (attr, key) => {
+      const el = chart.querySelector(`[${attr}="${key}"]`);
+      if (el) el.classList.add("active-path");
+    };
+    mark("data-flow-step", "resolve-stage");
+    if (!enabled || st.reason === "disabled") {
+      mark("data-flow-step", "pid-enabled");
+      mark("data-flow-branch", "pid-disabled");
+      $("flowCommandValue").textContent = "Current command: PID disabled";
+      return;
+    }
+    mark("data-flow-step", "pid-enabled");
+    mark("data-flow-branch", "pid-active");
+    mark("data-flow-step", "measure-vpd");
+    if (st.reason === "no_inside_vpd") {
+      $("flowCommandValue").textContent = "Current command: waiting for inside VPD";
+      return;
+    }
+    mark("data-flow-step", "temperature-check");
+    if (st.temperature_active) {
+      mark("data-flow-branch", "temperature-active");
+      mark("data-flow-step", "write-command");
+    } else {
+      mark("data-flow-branch", "temperature-normal");
+      mark("data-flow-step", "estimate-limit");
+      mark("data-flow-step", "target-check");
+      mark("data-flow-branch", st.vpd_reachable === false ? "target-limited" : "target-reachable");
+      mark("data-flow-step", "deadband-check");
+      const within = st.pid_error != null && Math.abs(Number(st.pid_error)) <= Number(st.pid_deadband_kpa ?? 0.03);
+      mark("data-flow-branch", within ? "within-deadband" : "pid-correction");
+      mark("data-flow-step", "apply-ramp");
+      mark("data-flow-step", "write-command");
+    }
+    const command = st.fan_command == null ? "—" : `${fmt0(st.fan_command)}%`;
+    const target = st.fan_ramp_target == null ? null : `${fmt0(st.fan_ramp_target)}% target`;
+    $("flowCommandValue").textContent = `Current command: ${command}${st.reason === "ramping" && target ? ` → ${target} (ramping)` : ""}`;
   }
 
   function renderControl(snap, { forceForm = false } = {}) {
@@ -590,6 +633,7 @@
       card.innerHTML = `
         <div class="phase-card-head">
           <h3>${phase.name || `Phase ${id}`}</h3>
+          <button type="button" class="btn ghost small" data-reset-stage="${id}">Reset stage</button>
         </div>
         <div class="phase-schedule">
           <label>Lights on
@@ -605,6 +649,29 @@
         </div>
         ${rows}`;
       root.appendChild(card);
+    });
+    root.querySelectorAll("[data-reset-stage]").forEach((button) => {
+      button.addEventListener("click", () =>
+        withBusy(async () => {
+          const phaseId = button.dataset.resetStage;
+          const phase = state.phases.find((item) => String(item.id ?? 0) === phaseId);
+          const phaseName = phase?.name || `Phase ${phaseId}`;
+          const warning = state.controlDirty ? " Unsaved Control tab edits will be discarded." : "";
+          if (!(await confirmAction(`Reset ${phaseName} to its factory stage defaults? Other stages will stay unchanged.${warning}`))) return;
+          const result = await api("/api/control/reset-stage", {
+            method: "POST",
+            body: JSON.stringify({ phase_id: Number(phaseId) }),
+          });
+          state.phases = result.phases || state.phases;
+          state.controlDirty = false;
+          state.controlHydrated = false;
+          renderControl(
+            { config: result.config, state: result.state, history: state.history },
+            { forceForm: true },
+          );
+          toast(`${phaseName} reset to defaults`);
+        }),
+      );
     });
     updateCurrentStageCard();
     root.querySelectorAll(".led-slider input[type=range]").forEach((input) => {

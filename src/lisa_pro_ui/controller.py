@@ -21,6 +21,7 @@ HISTORY_MAX = 720  # ~1h at 5s
 TEMPERATURE_RESPONSE_HOLD_S = 90.0
 TEMPERATURE_LED_REDUCTION_FACTOR = 0.5
 TEMPERATURE_LED_MIN_PCT = 20.0
+TEMPERATURE_LED_STEP_PCT = 10.0
 TEMPERATURE_RECOVERY_MARGIN_C = 0.5
 
 PHASE_NAME_HINTS = (
@@ -383,7 +384,7 @@ class FanPidController:
             self._last_throttle_at = None
 
         # Slow ramp of commanded min=max speed.
-        ramp_per_min = float(pid_cfg.get("ramp_pct_per_min", 4.0))
+        ramp_per_min = float(pid_cfg.get("ramp_pct_per_min", 15.0))
         if self._cmd_speed is None:
             start = float(fan_actual) if fan_actual is not None else fan_min
             self._cmd_speed = max(fan_min, min(fan_max, start))
@@ -421,7 +422,7 @@ class FanPidController:
                 or self._cmd_speed >= fan_max - 0.5
             )
             if temperature_outside_limited:
-                self._reduce_temperature_led(phases, cfg, phase_id, led_mode, now=now)
+                self._reduce_temperature_led(phases, cfg, phase_id, led_mode, now=now, halve=True)
             elif at_fan_max:
                 if self._temp_fan_max_since is None:
                     self._temp_fan_max_since = now
@@ -463,6 +464,7 @@ class FanPidController:
                     "fan_ramp_target": round(float(desired)),
                     "fan_actual": fan_actual,
                     "pid_error": None if vpd_inside is None else round(error, 4),
+                    "pid_deadband_kpa": deadband,
                     "pid_integral": round(self._pid.integral, 4),
                     "pid_output": round(pid_out, 3),
                     "throttling": throttling,
@@ -604,8 +606,11 @@ class FanPidController:
             self._write_temperature_led(phases, phase_id, led_mode, base)
         self._clear_temperature_led_override()
 
-    def reset_temperature_led_override(self) -> None:
+    def reset_temperature_led_override(self, phase_id: Optional[int] = None) -> None:
         """Forget a temporary dimming level after a manual LED setting save."""
+        if phase_id is not None and self._temp_led_key is not None:
+            if self._temp_led_key[0] != int(phase_id):
+                return
         self._clear_temperature_led_override()
 
     def _clear_temperature_led_override(self) -> None:
@@ -622,6 +627,7 @@ class FanPidController:
         led_mode: str,
         *,
         now: float,
+        halve: bool = False,
     ) -> None:
         base = self._temperature_led_base(cfg, phases, phase_id, led_mode)
         if base is None or base <= 0:
@@ -633,9 +639,14 @@ class FanPidController:
             return
         if self._last_temp_led_at is not None and now - self._last_temp_led_at < TEMPERATURE_RESPONSE_HOLD_S:
             return
-        minimum = min(TEMPERATURE_LED_MIN_PCT, base)
+        minimum = min(base, max(TEMPERATURE_LED_MIN_PCT, base * 0.25))
         current = min(self._temp_led_pct, base)
-        reduced = max(minimum, current * TEMPERATURE_LED_REDUCTION_FACTOR)
+        desired = (
+            current * TEMPERATURE_LED_REDUCTION_FACTOR
+            if halve
+            else current - TEMPERATURE_LED_STEP_PCT
+        )
+        reduced = max(minimum, desired)
         if reduced != self._temp_led_pct:
             self._write_temperature_led(phases, phase_id, led_mode, reduced)
             self._temp_led_pct = reduced

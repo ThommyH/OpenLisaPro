@@ -20,7 +20,7 @@ DEFAULT_PID = {
     # allows a 4.8 percentage-point correction, too little to clear sustained
     # VPD errors. 200 allows up to 24 points while still bounding windup.
     "integral_limit": 200.0,
-    "ramp_pct_per_min": 4.0,
+    "ramp_pct_per_min": 15.0,
     "interval_s": 5.0,
     "deadband_kpa": 0.03,
     "unreachable_error_kpa": 0.08,
@@ -166,6 +166,18 @@ class ConfigStore:
 
     def ensure_stage_settings_from_phases(self, phases: list[dict[str, Any]]) -> dict[str, Any]:
         return self.ensure_fan_limits_from_phases(phases)
+
+    def reset_stage_from_phase(self, phase_id: int | str, phase: dict[str, Any]) -> dict[str, Any]:
+        """Reset one stage's local overrides from its factory device phase."""
+        key = str(phase_id)
+        with self._lock:
+            for name in ("fan_limits", "vpd_targets", "led", "temperature_limits"):
+                values = self._data.setdefault(name, {})
+                values.pop(key, None)
+            override = self._data.get("temperature_led_override")
+            if isinstance(override, dict) and str(override.get("phase_id")) == key:
+                self._data["temperature_led_override"] = None
+            return self.ensure_fan_limits_from_phases([phase])
 
     @classmethod
     def _normalize_pid_values(cls, raw: dict[str, Any]) -> dict[str, Any]:
