@@ -2,6 +2,14 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.29] - 2026-10-11
+
+### Added
+
+- Add a complete manual mode with direct fan and LED percentages that bypass PID, VPD, and temperature controls.
+- Show one decimal place for fractional temperature and humidity readings.
+- Refresh desktop and mobile dashboard screenshots.
+
 ## [0.1.28] - 2026-10-11
 
 ### Changed

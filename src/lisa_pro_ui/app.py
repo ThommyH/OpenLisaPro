@@ -299,14 +299,28 @@ def create_app(
         except Exception as exc:
             return _err(exc, 400)
         device_error = None
-        device_settings = {"led", "fan_limits", "vpd_targets", "phase_schedules"}
+        device_settings = {
+            "led",
+            "fan_limits",
+            "vpd_targets",
+            "phase_schedules",
+            "manual_mode",
+            "manual_fan_pct",
+            "manual_led_pct",
+        }
         if device_settings.intersection(body):
             try:
-                if "led" in body:
+                if "led" in body or cfg.get("manual_mode"):
                     controller.reset_temperature_led_override()
                     cfg = store.get()
-                pct = _commanded_led_pct(cfg.get("led")) if "led" in body else None
-                _apply_saved_settings_to_device(cfg, pct)
+                if cfg.get("manual_mode"):
+                    # Apply saved device configuration and the exact manual
+                    # fan/LED values immediately, without waiting for the loop.
+                    controller._last_device_settings_sync_at = None
+                    controller._tick(cfg)
+                else:
+                    pct = _commanded_led_pct(cfg.get("led")) if "led" in body else None
+                    _apply_saved_settings_to_device(cfg, pct)
             except Exception as exc:  # noqa: BLE001 — local save should still succeed
                 device_error = str(exc)
         payload = {

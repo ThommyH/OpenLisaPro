@@ -189,3 +189,72 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
     assert back_again["temperature_soft_triggered"] is True
     assert back_again["fan_vpd_request"] == 10.0
     assert back_again["fan_ramp_target"] > back_again["fan_vpd_request"]
+
+
+def test_manual_mode_writes_direct_fan_and_led_ignoring_pid_and_temperature_limits(tmp_path, monkeypatch):
+    from lisa_pro_ui import app as app_module
+    from lisa_pro_ui import controller as controller_module
+
+    FakeLisaProClient.phases = [
+        {
+            "id": 0,
+            "name": "Seedling",
+            "schedule": {"on": "00:00", "off": "23:59"},
+            "settings": {
+                mode: {"fan_min": 10, "fan_max": 80, "vpd_min": 0.5, "vpd_max": 1.3, "led": 20}
+                for mode in ("day", "day_silent", "night", "night_silent")
+            },
+        }
+    ]
+    FakeLisaProClient.current_status = {
+        "temp_c": 40.0,
+        "humi_rh": 60.0,
+        "dew_c": None,
+        "temp_out_c": 25.0,
+        "humi_out_rh": 50.0,
+        "fan_pct": 80.0,
+        "light_on": True,
+        "grow": {"phase": "Seedling"},
+    }
+    monkeypatch.setattr(app_module, "LisaProClient", FakeLisaProClient)
+    monkeypatch.setattr(controller_module, "LisaProClient", FakeLisaProClient)
+    app = create_app(device_url="http://fake-lisa", data_dir=tmp_path, start_controller=False)
+    client = app.test_client()
+
+    saved = client.post(
+        "/api/control",
+        json={
+            "enabled": True,
+            "manual_mode": True,
+            "manual_fan_pct": 37.5,
+            "manual_led_pct": 63.2,
+            "temperature_limits": {"0": {"max_temp_c": 25}},
+        },
+    )
+
+    assert saved.status_code == 200
+    cfg = saved.get_json()["config"]
+    state = saved.get_json()["state"]
+    device_settings = FakeLisaProClient.phases[0]["settings"][state["mode"]]
+    assert cfg["manual_mode"] is True
+    assert state["reason"] == "manual"
+    assert state["enabled"] is False
+    assert state["temperature_active"] is False
+    assert state["temperature_warning"] is None
+    assert state["fan_command"] == 37.5
+    assert device_settings["fan_min"] == device_settings["fan_max"] == 37.5
+    assert device_settings["led"] == 63.2
+
+    changed = client.post("/api/control", json={"manual_fan_pct": 55, "manual_led_pct": 44})
+    assert changed.status_code == 200
+    updated_mode = changed.get_json()["state"]["mode"]
+    updated_settings = FakeLisaProClient.phases[0]["settings"][updated_mode]
+    assert updated_settings["fan_min"] == updated_settings["fan_max"] == 55
+    assert updated_settings["led"] == 44
+
+    automatic = client.post("/api/control", json={"manual_mode": False})
+    assert automatic.status_code == 200
+    app.config["FAN_CONTROLLER"]._tick(automatic.get_json()["config"])
+    auto_state = client.get("/api/control").get_json()["state"]
+    assert auto_state["manual_mode"] is False
+    assert auto_state["temperature_active"] is True

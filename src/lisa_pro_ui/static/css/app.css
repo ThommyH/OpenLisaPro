@@ -836,6 +836,52 @@ input:focus {
   gap: 0.85rem;
 }
 
+.manual-mode-panel {
+  display: grid;
+  grid-template-columns: minmax(15rem, 1fr) minmax(18rem, 1.2fr);
+  align-items: center;
+  gap: 0.9rem 1.2rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 0.9rem;
+  background: var(--glass);
+}
+
+.manual-mode-heading p {
+  margin: 0.4rem 0 0 0.25rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.manual-mode-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem 1rem;
+}
+
+.manual-mode-fields label {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.3rem 0.6rem;
+  align-items: center;
+  font-size: 0.8rem;
+}
+
+.manual-mode-fields output {
+  color: var(--leaf);
+  font-family: var(--font-mono);
+}
+
+.manual-mode-fields input[type="range"] {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: var(--leaf);
+}
+
+.manual-mode-fields.is-disabled {
+  opacity: 0.48;
+}
+
 .fan-flow-details {
   margin: 0.85rem 0;
   border: 1px solid var(--line);
@@ -1493,6 +1539,7 @@ input:focus {
   .control-toolbar { align-items: stretch; }
   .control-toggles { display: flex; flex-wrap: wrap; width: 100%; }
   .control-toggles > * { flex: 1 1 auto; }
+  .manual-mode-panel { grid-template-columns: 1fr; }
   .btn.small { min-height: 2.75rem; }
   .pid-status { min-width: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.55rem; }
   .pid-status > div { min-width: 0; }

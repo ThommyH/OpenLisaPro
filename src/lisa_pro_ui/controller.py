@@ -57,6 +57,7 @@ class FanPidController:
         self._client_factory = client_factory or (lambda: LisaProClient(self.device_url))
         self._phase_write_lock = phase_write_lock or threading.RLock()
         self._lock = threading.RLock()
+        self._tick_lock = threading.RLock()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self._pid = PIDController(output_min=-100.0, output_max=100.0)
@@ -66,6 +67,9 @@ class FanPidController:
         self._state: dict[str, Any] = {
             "running": False,
             "enabled": False,
+            "manual_mode": False,
+            "manual_fan_pct": 40.0,
+            "manual_led_pct": 50.0,
             "last_error": None,
             "last_tick_at": None,
             "mode": None,
@@ -114,6 +118,7 @@ class FanPidController:
         self._soft_temperature_boost_pct = 0.0
         self._soft_temperature_observed_at: Optional[float] = None
         self._soft_temperature_observed_c: Optional[float] = None
+        self._manual_mode_active: Optional[bool] = None
 
     def start(self) -> None:
         with self._lock:
@@ -163,13 +168,19 @@ class FanPidController:
             self._stop.wait(max(2.0, float(interval)))
 
     def _tick(self, cfg: dict[str, Any]) -> float:
+        with self._tick_lock:
+            return self._tick_once(cfg)
+
+    def _tick_once(self, cfg: dict[str, Any]) -> float:
         now = time.time()
 
         with self._client_factory() as client:
             status = client.status()
+        cfg = self.store.get()
+        manual_mode = bool(cfg.get("manual_mode"))
         phases: list[dict[str, Any]] = []
 
-        phases = self._ensure_night_leds_off(phases)
+        phases = self._ensure_night_leds_off(phases, enforce=not manual_mode)
 
         self.store.ensure_fan_limits_from_phases(phases)
         cfg = self.store.get()
@@ -179,13 +190,23 @@ class FanPidController:
             or sync_now - self._last_device_settings_sync_at >= PHASE_SETTINGS_SYNC_INTERVAL_S
         ):
             phases = self.sync_configured_settings(
-                phases, cfg, include_fan_limits=not bool(cfg.get("enabled"))
+                phases,
+                cfg,
+                include_fan_limits=not bool(cfg.get("enabled")) and not manual_mode,
             )
             self._last_device_settings_sync_at = sync_now
 
         phase, phase_id = self._resolve_phase(status, phases)
         mode = self._resolve_mode(status, phase)
-        enabled = bool(cfg.get("enabled"))
+        if self._manual_mode_active != manual_mode:
+            self._manual_mode_active = manual_mode
+            self._last_sent = None
+            self._cmd_speed = None
+            self._active_key = None
+            self._pid.reset()
+            self._unreachable_since = None
+            self._last_throttle_at = None
+        enabled = bool(cfg.get("enabled")) and not manual_mode
         led_mode = mode if mode in ("day", "day_silent") else "night"
         saved_led_override = cfg.get("temperature_led_override")
         current_temp_key = (int(phase_id), led_mode)
@@ -288,6 +309,65 @@ class FanPidController:
 
         fan_actual = status.get("fan_pct")
 
+        if manual_mode:
+            manual_fan_pct = max(0.0, min(100.0, float(cfg.get("manual_fan_pct", 40.0))))
+            manual_led_pct = max(0.0, min(100.0, float(cfg.get("manual_led_pct", 50.0))))
+            self._apply_manual_settings(phases, phase_id, mode, manual_fan_pct, manual_led_pct)
+            if self._temp_led_key is not None or cfg.get("temperature_led_override") is not None:
+                self._clear_temperature_led_override()
+            self._reset_soft_temperature_boost()
+            self._temp_fan_max_since = None
+            self._last_temp_led_at = None
+            self._cmd_speed = manual_fan_pct
+            self._last_sent = (int(phase_id), mode, manual_fan_pct)
+            self._active_key = (int(phase_id), mode)
+            self._pid.reset()
+            self._unreachable_since = None
+            self._last_throttle_at = None
+            with self._lock:
+                self._state.update(
+                    {
+                        "enabled": False,
+                        "manual_mode": True,
+                        "manual_fan_pct": manual_fan_pct,
+                        "manual_led_pct": manual_led_pct,
+                        "last_tick_at": now,
+                        "mode": mode,
+                        "phase_id": phase_id,
+                        "phase_name": (phase or {}).get("name"),
+                        "vpd_inside": None if vpd_inside is None else round(float(vpd_inside), 3),
+                        "vpd_outside": vpd_outside,
+                        "vpd_target": target,
+                        "vpd_target_raw": target_raw,
+                        "temperature_active": False,
+                        "temperature_limit_c": temperature_limit,
+                        "temperature_soft_limits": temperature_soft_limits,
+                        "temperature_soft_triggered": False,
+                        "temperature_soft_active": False,
+                        "temperature_adjustment_pct": 0.0,
+                        "temperature_inside_c": temperature_inside,
+                        "temperature_outside_c": temperature_outside,
+                        "temperature_warning": None,
+                        "led_override_pct": None,
+                        "vpd_reachable": reachable,
+                        "fan_min_limit": manual_fan_pct,
+                        "fan_max_limit": manual_fan_pct,
+                        "fan_vpd_request": None,
+                        "fan_command": manual_fan_pct,
+                        "fan_ramp_target": manual_fan_pct,
+                        "fan_actual": fan_actual,
+                        "pid_error": None,
+                        "pid_deadband_kpa": float(pid_cfg.get("deadband_kpa", 0.03)),
+                        "pid_integral": 0.0,
+                        "pid_output": None,
+                        "throttling": False,
+                        "reason": "manual",
+                        "last_error": None,
+                    }
+                )
+                self._append_history(now)
+            return interval
+
         if not enabled:
             self._reset_soft_temperature_boost()
             # Restore configured min/max band so the device is not left at min=max.
@@ -304,6 +384,7 @@ class FanPidController:
                 self._state.update(
                     {
                         "enabled": False,
+                        "manual_mode": False,
                         "last_tick_at": now,
                         "mode": mode,
                         "phase_id": phase_id,
@@ -350,6 +431,7 @@ class FanPidController:
                 self._state.update(
                     {
                         "enabled": True,
+                        "manual_mode": False,
                         "last_tick_at": now,
                         "mode": mode,
                         "phase_id": phase_id,
@@ -519,6 +601,7 @@ class FanPidController:
             self._state.update(
                 {
                     "enabled": True,
+                    "manual_mode": False,
                     "last_tick_at": now,
                     "mode": mode,
                     "phase_id": phase_id,
@@ -592,10 +675,14 @@ class FanPidController:
     ) -> None:
         self._apply_fan_band(phases, phase_id, mode, speed, speed)
 
-    def _ensure_night_leds_off(self, phases: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _ensure_night_leds_off(
+        self, phases: list[dict[str, Any]], *, enforce: bool = True
+    ) -> list[dict[str, Any]]:
         with self._phase_write_lock:
             with self._client_factory() as client:
                 latest = client.get_phases().get("phases") or []
+                if not enforce:
+                    return latest
                 updated = deepcopy(latest)
                 changed = False
                 for phase in updated:
@@ -613,6 +700,40 @@ class FanPidController:
             return latest
         self._last_phase_snapshot = updated
         return updated
+
+    def _apply_manual_settings(
+        self,
+        phases: list[dict[str, Any]],
+        phase_id: int,
+        mode: str,
+        fan_pct: float,
+        led_pct: float,
+    ) -> None:
+        """Write direct fan and LED values without PID or temperature overrides."""
+        fan_pct = max(0.0, min(100.0, float(fan_pct)))
+        led_pct = max(0.0, min(100.0, float(led_pct)))
+        with self._phase_write_lock:
+            with self._client_factory() as client:
+                latest = client.get_phases().get("phases") or []
+                updated = deepcopy(latest)
+                target_phase = next(
+                    (item for item in updated if int(item.get("id", -1)) == int(phase_id)), None
+                )
+                if target_phase is None and updated:
+                    target_phase = updated[min(int(phase_id), len(updated) - 1)]
+                if target_phase is None:
+                    raise LisaProError("No phases available to apply manual settings")
+                settings = target_phase.setdefault("settings", {})
+                mode_settings = settings.setdefault(mode, {})
+                changed = False
+                for field, value in (("fan_min", fan_pct), ("fan_max", fan_pct), ("led", led_pct)):
+                    if self._safe_float(mode_settings.get(field)) != value:
+                        mode_settings[field] = value
+                        changed = True
+                if changed:
+                    client.set_phases({"phases": updated})
+        phases[:] = deepcopy(updated)
+        self._last_phase_snapshot = deepcopy(updated)
 
     def _apply_fan_band(
         self,

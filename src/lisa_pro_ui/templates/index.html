@@ -180,13 +180,31 @@
           <div class="cta-row control-toggles">
             <label class="check big">
               <input type="checkbox" id="pidEnabled" />
-              PID enabled
+              <span id="pidEnabledLabel">PID enabled</span>
             </label>
             <button type="button" class="btn ghost small" id="btnSilentToggle" aria-pressed="false" title="Enable or disable the growbox's silent schedule. Silent mode becomes active during the configured silent hours.">Enable growbox silent mode</button>
             <button type="button" class="btn ghost small" id="btnControlReset">Reset defaults</button>
             <button type="button" class="btn primary small" id="btnControlSave">Save</button>
           </div>
         </div>
+
+        <section class="manual-mode-panel" id="manualModePanel" aria-label="Manual control">
+          <div class="manual-mode-heading">
+            <label class="check big" title="Direct control bypasses PID, VPD targets, fan ramps, and all soft or hard temperature overrides.">
+              <input type="checkbox" id="manualMode" />
+              Manual mode
+            </label>
+            <p>Manual mode sends these values directly and ignores PID and temperature limits. Monitor the growbox while it is active.</p>
+          </div>
+          <div class="manual-mode-fields" id="manualModeFields">
+            <label>Fan <output id="manualFanValue">40%</output>
+              <input type="range" min="0" max="100" step="1" value="40" id="manualFanPct" aria-label="Manual fan percentage" />
+            </label>
+            <label>LED <output id="manualLedValue">50%</output>
+              <input type="range" min="0" max="100" step="1" value="50" id="manualLedPct" aria-label="Manual LED percentage" />
+            </label>
+          </div>
+        </section>
 
         <details class="fan-flow-details">
           <summary>How fan speed is calculated</summary>
@@ -196,6 +214,12 @@
               <div><strong>Resolve stage and mode</strong><span>Use the active grow stage and its lights-on/off times. If device Silent mode is active, use Day silent during the day interval or Night silent during the night interval.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
+            <div class="flow-decision" data-flow-step="manual-mode"><strong>Is manual mode active?</strong></div>
+            <div class="flow-branches">
+              <div class="flow-outcome" data-flow-branch="manual-active"><b>Yes</b><span>Send the configured fan and LED percentages directly. PID, VPD targets, fan ramps, soft temperature boost, and hard maximum-temperature protection are bypassed.</span></div>
+              <div class="flow-outcome" data-flow-branch="manual-inactive"><b>No</b><span>Continue with the selected automatic control mode.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓ <span>manual mode off</span></div>
             <div class="flow-decision" data-flow-step="pid-enabled"><strong>Is local fan PID enabled?</strong></div>
             <div class="flow-branches">
               <div class="flow-outcome" data-flow-branch="pid-disabled"><b>No</b><span>Restore the stage’s configured fan min/max band. PID does not set a fan command.</span></div>

@@ -1,5 +1,11 @@
 # Using local fan control
 
+## Manual mode
+
+Enable **Manual mode** in the Control tab to set direct fan and LED percentages. The values apply to the active stage and mode and are reapplied by the controller. Manual mode bypasses PID, VPD targets, fan ramping, soft temperature boosts, and hard maximum-temperature fan and LED overrides. This also allows manual LED output during night modes. The setting and percentages persist across restarts. Turn Manual mode off to return to the saved automatic PID or stage fan-range behavior.
+
+Temperature and humidity readings show one decimal place when the device provides fractional values; whole-number readings stay compact.
+
 Open the **Control** tab to configure per-stage VPD targets, fan limits, and optional soft and hard temperature limits. Saved VPD targets, LED levels, and light schedules are written to matching Lisa Pro phase settings when saved, reapplied when OpenLisaPro starts, and reconciled once per minute. Saved fan limits are also reapplied when PID is off; while PID is on, its live fan command uses those device fields. PID tuning and temperature limits are local controller settings. The **Device** tab contains other growbox settings. PID tuning controls are collapsed by default.
 
 ## Enable and tune the controller

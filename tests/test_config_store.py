@@ -60,6 +60,17 @@ def test_fan_min_max_swapped_and_clamped(tmp_path: Path):
     assert limits["night"]["fan_max"] == 100.0
 
 
+def test_manual_control_settings_persist_and_percentages_are_clamped(tmp_path: Path):
+    store = ConfigStore(tmp_path / "control.json")
+    store.update({"manual_mode": True, "manual_fan_pct": 125, "manual_led_pct": -5})
+
+    config = ConfigStore(tmp_path / "control.json").get()
+
+    assert config["manual_mode"] is True
+    assert config["manual_fan_pct"] == 100.0
+    assert config["manual_led_pct"] == 0.0
+
+
 def test_seed_fan_limits_from_phases(tmp_path: Path):
     store = ConfigStore(tmp_path / "c.json")
     phases = [

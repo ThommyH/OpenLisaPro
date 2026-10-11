@@ -140,6 +140,11 @@
     return n == null || Number.isNaN(n) ? "—" : String(Math.round(Number(n)));
   }
 
+  function fmtSensor(n) {
+    const value = Number(n);
+    return n == null || !Number.isFinite(value) ? "—" : Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+
   function formatUptime(sec) {
     if (sec == null || Number.isNaN(sec)) return "—";
     sec = Math.floor(+sec);
@@ -284,8 +289,8 @@
   }
 
   function updateClimate(s, ctrlState) {
-    $("tempIn").textContent = s.temp_c == null ? "—" : `${fmt0(s.temp_c)}°C`;
-    $("humiIn").textContent = s.humi_rh == null ? "—" : `${fmt0(s.humi_rh)}%`;
+    $("tempIn").textContent = s.temp_c == null ? "—" : `${fmtSensor(s.temp_c)}°C`;
+    $("humiIn").textContent = s.humi_rh == null ? "—" : `${fmtSensor(s.humi_rh)}%`;
     const dewIn = s.dew_c != null ? s.dew_c : calcDewPoint(s.temp_c, s.humi_rh);
     const dewOut = s.dew_out_c != null ? s.dew_out_c : calcDewPoint(s.temp_out_c, s.humi_out_rh);
     $("dewIn").textContent = dewIn == null ? "—" : `${fmt1(dewIn)}°C`;
@@ -309,8 +314,8 @@
     $("vpdTarget").title = targetLimited
       ? "Requested target → achievable target estimated from outside dew point at inside temperature"
       : "Requested VPD target";
-    $("tempOut").textContent = s.temp_out_c == null ? "—" : `${fmt0(s.temp_out_c)}°C`;
-    $("humiOut").textContent = s.humi_out_rh == null ? "—" : `${fmt0(s.humi_out_rh)}%`;
+    $("tempOut").textContent = s.temp_out_c == null ? "—" : `${fmtSensor(s.temp_out_c)}°C`;
+    $("humiOut").textContent = s.humi_out_rh == null ? "—" : `${fmtSensor(s.humi_out_rh)}%`;
     $("ledGlow").classList.toggle("on", !!s.light_on);
   }
 
@@ -406,9 +411,9 @@
     }
   }
 
-  function updateControlLive(st, enabled) {
-    updateFanFlow(st, enabled);
-    $("pidMode").textContent = MODE_LABELS[st.mode] || (st.mode || "—").replace(/_/g, " ");
+  function updateControlLive(st, enabled, manualMode = !!state.control?.config?.manual_mode) {
+    updateFanFlow(st, enabled, manualMode);
+    $("pidMode").textContent = manualMode ? "Manual" : MODE_LABELS[st.mode] || (st.mode || "—").replace(/_/g, " ");
     const silentButton = $("btnSilentToggle");
     silentButton.textContent = state.silentEnabled ? "Disable growbox silent mode" : "Enable growbox silent mode";
     silentButton.setAttribute("aria-pressed", String(state.silentEnabled));
@@ -422,10 +427,10 @@
         st.fan_command == null ? "—" : `${fmt0(st.fan_command)}% ${fanBand}`;
     }
     const error = Number(st.pid_error);
-    $("pidErr").textContent = st.pid_error == null ? "—" : `${error > 0 ? "+" : ""}${error.toFixed(3)} kPa`;
-    $("pidReason").textContent = PID_REASON_LABELS[st.reason] || (st.reason || "—").replace(/_/g, " ");
+    $("pidErr").textContent = manualMode ? "Ignored" : st.pid_error == null ? "—" : `${error > 0 ? "+" : ""}${error.toFixed(3)} kPa`;
+    $("pidReason").textContent = manualMode ? "Direct fan and LED" : PID_REASON_LABELS[st.reason] || (st.reason || "—").replace(/_/g, " ");
     const stateLabel = $("pidReason").parentElement.querySelector(".label");
-    stateLabel.textContent = st.temperature_warning ? "Temperature warning" : "State";
+    stateLabel.textContent = manualMode ? "Control" : st.temperature_warning ? "Temperature warning" : "State";
     if (st.temperature_warning) $("pidReason").textContent = st.temperature_warning;
     $("pidReason").title = st.reason === "target_limited_by_outside_dew_point"
       ? "Outside air is too moist to reach the selected VPD target using ventilation alone."
@@ -433,40 +438,49 @@
         ? "The target is outside the estimated ventilation limit, or VPD did not improve after a fan command reached its upper limit. The controller is stepping fan speed down; it may not have reached the ceiling in the outside-air-limited case."
         : st.temperature_warning || (st.temperature_active ? "The controller prioritizes cooling and commands the fan to its configured maximum. LED power may be reduced temporarily." : "");
     $("pidStatus").classList.toggle("throttling", !!st.throttling);
-    $("pidStatus").classList.toggle("active", !!enabled);
+    $("pidStatus").classList.toggle("active", !!enabled || manualMode);
+    $("pidEnabled").disabled = manualMode;
+    $("pidEnabledLabel").textContent = manualMode ? "PID suspended" : "PID enabled";
     if (state.status) updateClimate(state.status, st);
   }
 
-  function updateFanFlow(st, enabled) {
+  function updateFanFlow(st, enabled, manualMode = false) {
     const chart = document.querySelector(".fan-flowchart");
     if (!chart) return;
     const steps = ["resolve-stage"];
     const branches = [];
     const addStep = (key) => steps.push(key);
     const addBranch = (key) => branches.push(key);
-    addStep("pid-enabled");
-    if (!enabled || st.reason === "disabled") {
-      addBranch("pid-disabled");
+    addStep("manual-mode");
+    if (manualMode || st.reason === "manual") {
+      addBranch("manual-active");
+      addStep("write-command");
     } else {
-      addBranch("pid-active");
-      addStep("measure-vpd");
-      if (st.reason !== "no_inside_vpd") {
-        addStep("temperature-check");
-        if (st.temperature_active) {
-          addBranch("temperature-active");
-          addStep("write-command");
-        } else {
-          addBranch("temperature-normal");
-          addStep("estimate-limit");
-          addStep("target-check");
-          addBranch(st.vpd_reachable === false ? "target-limited" : "target-reachable");
-          addStep("deadband-check");
-          const within = st.pid_error != null && Math.abs(Number(st.pid_error)) <= Number(st.pid_deadband_kpa ?? 0.03);
-          addBranch(within ? "within-deadband" : "pid-correction");
-          addStep("soft-temperature-check");
-          addBranch(st.temperature_soft_triggered ? "soft-temperature-adjust" : "soft-temperature-hold");
-          addStep("apply-ramp");
-          addStep("write-command");
+      addBranch("manual-inactive");
+      addStep("pid-enabled");
+      if (!enabled || st.reason === "disabled") {
+        addBranch("pid-disabled");
+      } else {
+        addBranch("pid-active");
+        addStep("measure-vpd");
+        if (st.reason !== "no_inside_vpd") {
+          addStep("temperature-check");
+          if (st.temperature_active) {
+            addBranch("temperature-active");
+            addStep("write-command");
+          } else {
+            addBranch("temperature-normal");
+            addStep("estimate-limit");
+            addStep("target-check");
+            addBranch(st.vpd_reachable === false ? "target-limited" : "target-reachable");
+            addStep("deadband-check");
+            const within = st.pid_error != null && Math.abs(Number(st.pid_error)) <= Number(st.pid_deadband_kpa ?? 0.03);
+            addBranch(within ? "within-deadband" : "pid-correction");
+            addStep("soft-temperature-check");
+            addBranch(st.temperature_soft_triggered ? "soft-temperature-adjust" : "soft-temperature-hold");
+            addStep("apply-ramp");
+            addStep("write-command");
+          }
         }
       }
     }
@@ -474,11 +488,21 @@
     const previousTemperatureBoost = state.lastTemperatureAdjustmentPct;
     const boostChanged = previousTemperatureBoost != null && Math.abs(temperatureBoost - previousTemperatureBoost) >= 0.01;
     state.lastTemperatureAdjustmentPct = temperatureBoost;
-    const signature = JSON.stringify([steps, branches, st.reason, !!st.throttling, Number(temperatureBoost.toFixed(2))]);
+    const signature = JSON.stringify([
+      steps,
+      branches,
+      st.reason,
+      !!st.throttling,
+      Number(temperatureBoost.toFixed(2)),
+      manualMode ? Number(st.manual_fan_pct) : null,
+      manualMode ? Number(st.manual_led_pct) : null,
+    ]);
     const changed = signature !== state.lastFlowSignature;
     if (changed) {
       state.lastFlowSignature = signature;
-      const reason = !enabled || st.reason === "disabled" ? "PID disabled"
+      const reason = manualMode || st.reason === "manual"
+        ? `Manual mode · fan ${fmt0(st.manual_fan_pct)}% · LED ${fmt0(st.manual_led_pct)}%`
+        : !enabled || st.reason === "disabled" ? "PID disabled"
         : st.reason === "no_inside_vpd" ? "Waiting for inside VPD"
           : st.temperature_active ? (st.temperature_warning || (st.reason === "temperature_limited_by_outside" ? "High temperature · outside too warm" : "High temperature · fan max"))
             : boostChanged && temperatureBoost < previousTemperatureBoost ? `Soft temperature boost backed off (${fmt1(previousTemperatureBoost)} → ${fmt1(temperatureBoost)} pp)`
@@ -515,6 +539,10 @@
         .catch((error) => console.error("Could not persist controller flow change", error));
     }
     applyFlowPath({ steps, branches });
+    if (manualMode || st.reason === "manual") {
+      $("flowCommandValue").textContent = `Manual command: fan ${fmt0(st.fan_command)}% · LED ${fmt0(st.manual_led_pct)}%`;
+      return;
+    }
     if (!enabled || st.reason === "disabled") {
       $("flowCommandValue").textContent = "Current command: PID disabled";
       return;
@@ -611,7 +639,7 @@
     state.control = snap;
     const cfg = snap.config || {};
     const st = snap.state || {};
-    updateControlLive(st, cfg.enabled);
+    updateControlLive(st, cfg.enabled, cfg.manual_mode);
 
     if (snap.history) {
       mergeHistory(snap.history);
@@ -623,6 +651,14 @@
 
     const pid = cfg.pid || {};
     $("pidEnabled").checked = !!cfg.enabled;
+    $("manualMode").checked = !!cfg.manual_mode;
+    $("manualFanPct").value = cfg.manual_fan_pct ?? 40;
+    $("manualLedPct").value = cfg.manual_led_pct ?? 50;
+    $("manualFanValue").textContent = `${fmt0($("manualFanPct").value)}%`;
+    $("manualLedValue").textContent = `${fmt0($("manualLedPct").value)}%`;
+    $("manualModeFields").classList.toggle("is-disabled", !cfg.manual_mode);
+    $("manualFanPct").disabled = !cfg.manual_mode;
+    $("manualLedPct").disabled = !cfg.manual_mode;
     $("pidKp").value = pid.kp ?? "";
     $("pidKi").value = pid.ki ?? "";
     $("pidKd").value = pid.kd ?? "";
@@ -975,6 +1011,9 @@
   function collectControlPayload() {
     return {
       enabled: $("pidEnabled").checked,
+      manual_mode: $("manualMode").checked,
+      manual_fan_pct: Number($("manualFanPct").value),
+      manual_led_pct: Number($("manualLedPct").value),
       vpd_targets: collectVpdTargets(),
       pid: {
         kp: Number($("pidKp").value),
@@ -1311,7 +1350,7 @@
       });
       toast("Silent settings saved");
       state.silentEnabled = $("silentEnabled").checked;
-      updateControlLive((state.control && state.control.state) || {}, state.control && state.control.config && state.control.config.enabled);
+      updateControlLive((state.control && state.control.state) || {}, state.control && state.control.config && state.control.config.enabled, state.control && state.control.config && state.control.config.manual_mode);
     });
   });
 
@@ -1448,7 +1487,7 @@
       });
       state.silentEnabled = !!result.enabled;
       $("silentEnabled").checked = state.silentEnabled;
-      updateControlLive((state.control && state.control.state) || {}, state.control && state.control.config && state.control.config.enabled);
+      updateControlLive((state.control && state.control.state) || {}, state.control && state.control.config && state.control.config.enabled, state.control && state.control.config && state.control.config.manual_mode);
       toast(state.silentEnabled ? "Growbox silent schedule enabled" : "Growbox silent schedule disabled");
       await refreshControl();
       await refreshStatus();
@@ -1463,6 +1502,21 @@
   $("controlForm").addEventListener("input", markControlDirty);
   $("controlForm").addEventListener("change", markControlDirty);
   $("pidEnabled").addEventListener("change", markControlDirty);
+  $("manualMode").addEventListener("change", () => {
+    const enabled = $("manualMode").checked;
+    $("manualModeFields").classList.toggle("is-disabled", !enabled);
+    $("manualFanPct").disabled = !enabled;
+    $("manualLedPct").disabled = !enabled;
+    $("pidEnabled").disabled = enabled;
+    $("pidEnabledLabel").textContent = enabled ? "PID suspended" : "PID enabled";
+    markControlDirty();
+  });
+  [["manualFanPct", "manualFanValue"], ["manualLedPct", "manualLedValue"]].forEach(([inputId, outputId]) => {
+    $(inputId).addEventListener("input", () => {
+      $(outputId).textContent = `${fmt0($(inputId).value)}%`;
+      markControlDirty();
+    });
+  });
   bindDualRanges(document);
 
   $("startForm").addEventListener("input", () => {

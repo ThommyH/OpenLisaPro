@@ -32,6 +32,9 @@ DEFAULT_PID = {
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": True,
+    "manual_mode": False,
+    "manual_fan_pct": 40.0,
+    "manual_led_pct": 50.0,
     "vpd_targets": {},  # phase_id -> mode -> {vpd_min, vpd_max}
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
     "temperature_limits": {},  # phase_id -> hard {max_temp_c}
@@ -97,6 +100,11 @@ class ConfigStore:
         with self._lock:
             if "enabled" in patch:
                 self._data["enabled"] = bool(patch["enabled"])
+            if "manual_mode" in patch:
+                self._data["manual_mode"] = bool(patch["manual_mode"])
+            for field in ("manual_fan_pct", "manual_led_pct"):
+                if field in patch and patch[field] is not None:
+                    self._data[field] = max(0.0, min(100.0, float(patch[field])))
             if "vpd_targets" in patch and isinstance(patch["vpd_targets"], dict):
                 self._data["vpd_targets"] = self._normalize_vpd_targets(patch["vpd_targets"])
             if "fan_limits" in patch and isinstance(patch["fan_limits"], dict):
@@ -374,6 +382,12 @@ class ConfigStore:
         out.setdefault("temperature_led_override", None)
         out.setdefault("led", {})
         out.setdefault("enabled", True)
+        out["manual_mode"] = bool(out.get("manual_mode", False))
+        for field, default in (("manual_fan_pct", 40.0), ("manual_led_pct", 50.0)):
+            try:
+                out[field] = max(0.0, min(100.0, float(out.get(field, default))))
+            except (TypeError, ValueError):
+                out[field] = default
         if not isinstance(out.get("temperature_limits"), dict):
             out["temperature_limits"] = {}
         if not isinstance(out.get("temperature_soft_limits"), dict):
