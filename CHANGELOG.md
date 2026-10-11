@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.20] - 2026-10-11
+
+### Changed
+
+- Ramp soft temperature fan boost from a small initial correction, increasing only while temperature rises and backing off when it is flat or falling.
+
 ## [0.1.19] - 2026-10-11
 
 ### Fixed

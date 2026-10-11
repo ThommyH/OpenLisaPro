@@ -12,7 +12,7 @@ The controller uses inside VPD as its goal and estimates the ventilation limit f
 
 ## Temperature protection
 
-Each stage has an **Enable soft temperature fan boost** switch and optional soft minimum and maximum values. Above the soft maximum, the controller adds a proportional fan correction even when VPD is outside its target band. This correction never reduces the VPD-based request. The global **Temperature weight %/°C** sets its strength; the default is 15 percentage points per degree, and zero disables it. The soft minimum does not lower fan speed.
+Each stage has an **Enable soft temperature fan boost** switch and optional soft minimum and maximum values. Above the soft maximum, the controller starts with a small fan boost. It checks the temperature trend every minute: if temperature is still rising, it adds 2 percentage points; if temperature is flat or falling, it removes 2 points. This lets it back off when extra fan speed has not produced a cooling response. The boost is capped by the global **Temperature weight %/°C** and the stage fan limit, and never reduces the VPD-based request. A hard temperature limit still commands the fan ceiling immediately. The soft minimum does not lower fan speed.
 
 The separate hard **Maximum temperature** takes priority over normal VPD control and requests the configured maximum fan speed. Normal control resumes after the temperature falls at least 0.5°C below the limit.
 

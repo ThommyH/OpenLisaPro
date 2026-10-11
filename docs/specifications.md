@@ -18,7 +18,7 @@ This document describes the user-visible behavior of OpenLisaPro's local dashboa
 
 Each stage and mode can have VPD min/max targets and fan min/max limits. Stage temperature settings include:
 
-- **Soft minimum / maximum:** optional temperature bounds shown in the stage controls, with a per-stage enable switch. Exceeding an enabled soft maximum adds a secondary fan request. Disabling the switch preserves the values, dims and disables their inputs, and stops soft temperature adjustments. The soft minimum does not reduce the fan request.
+- **Soft minimum / maximum:** optional temperature bounds shown in the stage controls, with a per-stage enable switch. Exceeding an enabled soft maximum starts a small secondary fan request that increases by 2 percentage points per minute while temperature is rising, and backs off by 2 points when temperature is flat or falling. The boost is capped by the global temperature weight and remaining fan range. Disabling the switch preserves the values, dims and disables their inputs, and stops soft temperature adjustments. The soft minimum does not reduce the fan request. Hard maximum temperature protection still commands the fan ceiling immediately.
 - **Maximum temperature:** optional hard temperature limit. Above this limit the controller prioritizes cooling and requests the mode's configured maximum fan speed.
 - **LED:** Day and Day silent output can be set separately. Night and Night silent LED output is always 0%.
 

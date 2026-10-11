@@ -27,6 +27,10 @@ TEMPERATURE_LED_REDUCTION_FACTOR = 0.5
 TEMPERATURE_LED_MIN_PCT = 20.0
 TEMPERATURE_LED_STEP_PCT = 10.0
 TEMPERATURE_RECOVERY_MARGIN_C = 0.5
+SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 60.0
+SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C = 0.1
+SOFT_TEMPERATURE_BOOST_STEP_PCT = 2.0
+SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 4.0
 
 PHASE_NAME_HINTS = (
     ("flower", ("flower", "blüte", "bluete", "blute", "bloom")),
@@ -103,6 +107,10 @@ class FanPidController:
         self._temp_led_pct: Optional[float] = None
         self._temp_led_key: Optional[tuple[int, str]] = None
         self._led_settings_synced = False
+        self._soft_temperature_key: Optional[tuple[int, str]] = None
+        self._soft_temperature_boost_pct = 0.0
+        self._soft_temperature_observed_at: Optional[float] = None
+        self._soft_temperature_observed_c: Optional[float] = None
 
     def start(self) -> None:
         with self._lock:
@@ -272,6 +280,7 @@ class FanPidController:
         fan_actual = status.get("fan_pct")
 
         if not enabled:
+            self._reset_soft_temperature_boost()
             # Restore configured min/max band so the device is not left at min=max.
             if self._last_sent is not None:
                 try:
@@ -326,6 +335,7 @@ class FanPidController:
             return interval
 
         if vpd_inside is None and not temperature_active:
+            self._reset_soft_temperature_boost()
             with self._lock:
                 self._state.update(
                     {
@@ -367,11 +377,10 @@ class FanPidController:
         desired = self._map_pid_to_fan(pid_out, fan_min, fan_max, error, deadband=deadband)
         vpd_fan_request = desired
 
-        # Soft temperature control is additive: it can raise exhaust above the
-        # VPD request, but never lower that request. A warm correction applies
-        # even when VPD is outside its band. Hard maximum protection below
-        # still takes priority.
-        temperature_adjustment = 0.0
+        # Soft temperature control is a gradual feedback boost above the VPD
+        # request. It can raise exhaust, but never lower the VPD request, and
+        # still applies when VPD is outside its band. Hard maximum protection
+        # below takes priority.
         soft_min = (temperature_soft_limits or {}).get("min_temp_c")
         soft_max = (temperature_soft_limits or {}).get("max_temp_c")
         soft_temperature_hot = (
@@ -380,15 +389,19 @@ class FanPidController:
             and soft_max is not None
             and temperature_inside > soft_max
         )
-        if not temperature_active and temperature_inside is not None:
-            temperature_error = 0.0
-            if soft_temperature_hot:
-                temperature_error = temperature_inside - soft_max
-            temperature_weight = max(
+        temperature_adjustment = self._soft_temperature_boost(
+            phase_id=phase_id,
+            mode=mode,
+            temperature_c=temperature_inside,
+            soft_max_c=soft_max,
+            hot=soft_temperature_hot,
+            max_boost_pct=max(0.0, fan_max - desired),
+            weight_pct_per_c=max(
                 0.0, min(20.0, float(pid_cfg.get("temperature_weight_pct_per_c", 15.0)))
-            )
-            temperature_adjustment = temperature_error * temperature_weight
-            desired = max(fan_min, min(fan_max, desired + temperature_adjustment))
+            ),
+            now=now,
+        )
+        desired = max(fan_min, min(fan_max, desired + temperature_adjustment))
 
         # Unreachable / stuck at ceiling → throttle down.
         throttling = False
@@ -635,6 +648,73 @@ class FanPidController:
             if (value := FanPidController._safe_float(values.get(key))) is not None
         }
         return limits or None
+
+    def _soft_temperature_boost(
+        self,
+        *,
+        phase_id: int,
+        mode: str,
+        temperature_c: Optional[float],
+        soft_max_c: Optional[float],
+        hot: bool,
+        max_boost_pct: float,
+        weight_pct_per_c: float,
+        now: float,
+    ) -> float:
+        """Adjust the extra fan boost gradually from the observed temperature trend.
+
+        Start with a small boost. Every observation window, add a step only if
+        temperature is still rising; if it is flat or falling, back the boost
+        off so soft control does not keep pushing fan to its limit without a
+        measured temperature response.
+        """
+        if not hot or temperature_c is None or soft_max_c is None:
+            self._reset_soft_temperature_boost()
+            return 0.0
+
+        key = (int(phase_id), mode)
+        if self._soft_temperature_key != key:
+            self._reset_soft_temperature_boost()
+            self._soft_temperature_key = key
+
+        target_boost = min(
+            max(0.0, float(max_boost_pct)),
+            max(0.0, (float(temperature_c) - float(soft_max_c)) * float(weight_pct_per_c)),
+        )
+        if target_boost <= 0.0:
+            self._reset_soft_temperature_boost()
+            return 0.0
+
+        if self._soft_temperature_observed_at is None:
+            self._soft_temperature_boost_pct = min(
+                SOFT_TEMPERATURE_INITIAL_BOOST_PCT, target_boost
+            )
+            self._soft_temperature_observed_at = now
+            self._soft_temperature_observed_c = float(temperature_c)
+        elif now - self._soft_temperature_observed_at >= SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S:
+            previous_temp = self._soft_temperature_observed_c
+            trend = float(temperature_c) - float(previous_temp if previous_temp is not None else temperature_c)
+            if trend > SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C:
+                self._soft_temperature_boost_pct = min(
+                    target_boost,
+                    self._soft_temperature_boost_pct + SOFT_TEMPERATURE_BOOST_STEP_PCT,
+                )
+            else:
+                self._soft_temperature_boost_pct = max(
+                    0.0,
+                    self._soft_temperature_boost_pct - SOFT_TEMPERATURE_BOOST_STEP_PCT,
+                )
+            self._soft_temperature_observed_at = now
+            self._soft_temperature_observed_c = float(temperature_c)
+
+        self._soft_temperature_boost_pct = min(self._soft_temperature_boost_pct, target_boost)
+        return round(self._soft_temperature_boost_pct, 2)
+
+    def _reset_soft_temperature_boost(self) -> None:
+        self._soft_temperature_key = None
+        self._soft_temperature_boost_pct = 0.0
+        self._soft_temperature_observed_at = None
+        self._soft_temperature_observed_c = None
 
     @staticmethod
     def _temperature_led_base(
