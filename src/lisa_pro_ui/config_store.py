@@ -36,6 +36,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
     "temperature_limits": {},  # phase_id -> hard {max_temp_c}
     "temperature_soft_limits": {},  # phase_id -> {enabled, min_temp_c?, max_temp_c?, max_boost_pct?}
+    "phase_schedules": {},  # phase_id -> {on, off}
     "temperature_led_override": None,  # temporary controller LED reduction, restored after cooling
     "led": {},  # phase_id -> mode -> percent
     "pid": dict(DEFAULT_PID),
@@ -100,6 +101,8 @@ class ConfigStore:
                 self._data["vpd_targets"] = self._normalize_vpd_targets(patch["vpd_targets"])
             if "fan_limits" in patch and isinstance(patch["fan_limits"], dict):
                 self._data["fan_limits"] = self._normalize_fan_limits(patch["fan_limits"])
+            if "phase_schedules" in patch and isinstance(patch["phase_schedules"], dict):
+                self._data["phase_schedules"] = self._normalize_phase_schedules(patch["phase_schedules"])
             if "temperature_limits" in patch and isinstance(patch["temperature_limits"], dict):
                 self._data["temperature_limits"] = self._normalize_temperature_limits(patch["temperature_limits"])
             if "temperature_soft_limits" in patch and isinstance(patch["temperature_soft_limits"], dict):
@@ -179,7 +182,7 @@ class ConfigStore:
         """Reset one stage's local overrides from its factory device phase."""
         key = str(phase_id)
         with self._lock:
-            for name in ("fan_limits", "vpd_targets", "led", "temperature_limits", "temperature_soft_limits"):
+            for name in ("fan_limits", "vpd_targets", "led", "temperature_limits", "temperature_soft_limits", "phase_schedules"):
                 values = self._data.setdefault(name, {})
                 values.pop(key, None)
             override = self._data.get("temperature_led_override")
@@ -250,6 +253,21 @@ class ConfigStore:
                 continue
             max_temp = float(values["max_temp_c"])
             out[str(phase_id)] = {"max_temp_c": max(5.0, min(50.0, max_temp))}
+        return out
+
+    @staticmethod
+    def _normalize_phase_schedules(raw: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for phase_id, values in raw.items():
+            if not isinstance(values, dict):
+                continue
+            schedule = {
+                field: str(values[field])
+                for field in ("on", "off")
+                if values.get(field) not in (None, "")
+            }
+            if schedule:
+                out[str(phase_id)] = schedule
         return out
 
     @staticmethod
@@ -352,6 +370,7 @@ class ConfigStore:
         out.setdefault("fan_limits", {})
         out.setdefault("temperature_limits", {})
         out.setdefault("temperature_soft_limits", {})
+        out.setdefault("phase_schedules", {})
         out.setdefault("temperature_led_override", None)
         out.setdefault("led", {})
         out.setdefault("enabled", True)
@@ -359,6 +378,10 @@ class ConfigStore:
             out["temperature_limits"] = {}
         if not isinstance(out.get("temperature_soft_limits"), dict):
             out["temperature_soft_limits"] = {}
+        if isinstance(out.get("phase_schedules"), dict):
+            out["phase_schedules"] = self._normalize_phase_schedules(out["phase_schedules"])
+        else:
+            out["phase_schedules"] = {}
         out["pid"] = self._coerce_global_pid(out.get("pid") if isinstance(out.get("pid"), dict) else {})
         if isinstance(out.get("led"), dict):
             out["led"] = self._normalize_led(out["led"])

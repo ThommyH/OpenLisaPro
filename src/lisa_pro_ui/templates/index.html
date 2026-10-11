@@ -232,7 +232,7 @@
             <div class="flow-arrow" aria-hidden="true">↓ <span>requested speed</span></div>
             <div class="flow-decision" data-flow-step="soft-temperature-check"><strong>Is inside temperature above the soft maximum?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Add a gradual fan correction</b><span>Every minute, add 2 percentage points if temperature is rising or back off 2 if it is flat or falling. The global temperature weight, per-stage boost ceiling, and stage fan limit cap the correction.</span></div>
+              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Soft limit exceeded</b><span>Start with a small fan correction. Every minute, add 2 percentage points if temperature is rising or back off toward a 2 point holding boost if it is flat or falling. The global temperature weight, per-stage boost ceiling, and stage fan limit cap the correction.</span></div>
               <div class="flow-outcome" data-flow-branch="soft-temperature-hold"><b>No</b><span>Keep the VPD fan request unchanged. A soft minimum never lowers the VPD request. The hard maximum remains a separate safety override.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>combined request</span></div>

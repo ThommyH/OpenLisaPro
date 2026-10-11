@@ -196,6 +196,7 @@ def test_soft_temperature_limits_can_be_disabled_per_stage(tmp_path: Path):
 
 def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypatch):
     from lisa_pro_ui import app as app_module
+    from lisa_pro_ui import controller as controller_module
 
     class FakeClient:
         phases = [
@@ -226,6 +227,7 @@ def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypa
             type(self).phases = payload["phases"]
 
     monkeypatch.setattr(app_module, "LisaProClient", FakeClient)
+    monkeypatch.setattr(controller_module, "LisaProClient", FakeClient)
     app = create_app(data_dir=tmp_path, start_controller=False)
     response = app.test_client().post(
         "/api/control", json={"led": {"0": {"day": 42, "day_silent": 65}}}

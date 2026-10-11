@@ -464,7 +464,7 @@
           const within = st.pid_error != null && Math.abs(Number(st.pid_error)) <= Number(st.pid_deadband_kpa ?? 0.03);
           addBranch(within ? "within-deadband" : "pid-correction");
           addStep("soft-temperature-check");
-          addBranch(st.temperature_soft_active ? "soft-temperature-adjust" : "soft-temperature-hold");
+          addBranch(st.temperature_soft_triggered ? "soft-temperature-adjust" : "soft-temperature-hold");
           addStep("apply-ramp");
           addStep("write-command");
         }
@@ -485,7 +485,7 @@
               : boostChanged && temperatureBoost > previousTemperatureBoost ? `Soft temperature boost increased (${fmt1(previousTemperatureBoost)} → ${fmt1(temperatureBoost)} pp)`
                 : st.throttling ? "Backing off · target unreachable"
                   : st.vpd_reachable === false ? "Outside-air limited"
-                    : st.temperature_soft_active ? "Soft temperature boost"
+                    : st.temperature_soft_triggered ? "Soft temperature limit active"
                   : st.reason === "ramping" ? "Ramping toward fan request" : "Tracking VPD target";
       const event = {
         at: Date.now(), title: reason, steps: [...steps], branches: [...branches], signature,
@@ -514,7 +514,7 @@
         })
         .catch((error) => console.error("Could not persist controller flow change", error));
     }
-    if (changed) applyFlowPath({ steps, branches });
+    applyFlowPath({ steps, branches });
     if (!enabled || st.reason === "disabled") {
       $("flowCommandValue").textContent = "Current command: PID disabled";
       return;
@@ -526,7 +526,7 @@
     const command = st.fan_command == null ? "—" : `${fmt0(st.fan_command)}%`;
     const target = st.fan_ramp_target == null ? null : `${fmt0(st.fan_ramp_target)}% target`;
     const tempCorrection = Number(st.temperature_adjustment_pct || 0);
-    const tempNote = st.temperature_soft_active
+    const tempNote = st.temperature_soft_triggered
       ? ` · temperature ${tempCorrection > 0 ? "+" : ""}${fmt1(tempCorrection)}%`
       : "";
     $("flowCommandValue").textContent = `Current command: ${command}${st.reason === "ramping" && target ? ` → ${target} (ramping)` : ""}${tempNote}`;

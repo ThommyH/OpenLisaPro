@@ -31,6 +31,7 @@ SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 60.0
 SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C = 0.1
 SOFT_TEMPERATURE_BOOST_STEP_PCT = 2.0
 SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 4.0
+SOFT_TEMPERATURE_MIN_BOOST_PCT = 2.0
 PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
 
 PHASE_NAME_HINTS = (
@@ -77,6 +78,7 @@ class FanPidController:
             "temperature_active": False,
             "temperature_limit_c": None,
             "temperature_soft_limits": None,
+            "temperature_soft_triggered": False,
             "temperature_soft_active": False,
             "temperature_adjustment_pct": 0.0,
             "temperature_inside_c": None,
@@ -108,7 +110,7 @@ class FanPidController:
         self._temp_led_pct: Optional[float] = None
         self._temp_led_key: Optional[tuple[int, str]] = None
         self._last_device_settings_sync_at: Optional[float] = None
-        self._soft_temperature_key: Optional[tuple[int, str]] = None
+        self._soft_temperature_key: Optional[tuple[int, str, float, float, float]] = None
         self._soft_temperature_boost_pct = 0.0
         self._soft_temperature_observed_at: Optional[float] = None
         self._soft_temperature_observed_c: Optional[float] = None
@@ -314,6 +316,7 @@ class FanPidController:
                         "temperature_active": False,
                         "temperature_limit_c": temperature_limit,
                         "temperature_soft_limits": temperature_soft_limits,
+                        "temperature_soft_triggered": False,
                         "temperature_soft_active": False,
                         "temperature_adjustment_pct": 0.0,
                         "temperature_inside_c": temperature_inside,
@@ -359,6 +362,7 @@ class FanPidController:
                         "temperature_active": False,
                         "temperature_limit_c": temperature_limit,
                         "temperature_soft_limits": temperature_soft_limits,
+                        "temperature_soft_triggered": False,
                         "temperature_soft_active": False,
                         "temperature_adjustment_pct": 0.0,
                         "temperature_inside_c": temperature_inside,
@@ -526,6 +530,7 @@ class FanPidController:
                     "temperature_active": temperature_active,
                     "temperature_limit_c": temperature_limit,
                     "temperature_soft_limits": temperature_soft_limits,
+                    "temperature_soft_triggered": soft_temperature_hot,
                     "temperature_soft_active": abs(temperature_adjustment) >= 0.01,
                     "temperature_adjustment_pct": round(temperature_adjustment, 2),
                     "temperature_inside_c": temperature_inside,
@@ -684,7 +689,13 @@ class FanPidController:
             self._reset_soft_temperature_boost()
             return 0.0
 
-        key = (int(phase_id), mode)
+        key = (
+            int(phase_id),
+            mode,
+            float(soft_max_c),
+            float(max_stage_boost_pct),
+            float(weight_pct_per_c),
+        )
         if self._soft_temperature_key != key:
             self._reset_soft_temperature_boost()
             self._soft_temperature_key = key
@@ -714,7 +725,7 @@ class FanPidController:
                 )
             else:
                 self._soft_temperature_boost_pct = max(
-                    0.0,
+                    min(SOFT_TEMPERATURE_MIN_BOOST_PCT, target_boost),
                     self._soft_temperature_boost_pct - SOFT_TEMPERATURE_BOOST_STEP_PCT,
                 )
             self._soft_temperature_observed_at = now

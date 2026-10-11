@@ -2,6 +2,14 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.26] - 2026-10-11
+
+### Fixed
+
+- Keep a small soft-temperature fan correction while still above the configured soft maximum, retry the initial boost when the maximum or boost cap changes, and keep the flowchart branch in sync with the active threshold.
+- Add integration coverage for saved settings reaching the device and changes propagating through fan calculations when settings are changed and restored.
+- Persist per-stage light schedules so periodic device reconciliation can restore them after external changes.
+
 ## [0.1.25] - 2026-10-11
 
 ### Changed
