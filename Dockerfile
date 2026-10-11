@@ -16,9 +16,9 @@ COPY src ./src
 RUN uv sync --frozen --no-dev
 
 RUN mkdir -p /data && chown -R 10001:10001 /app /data
-USER 10001:10001
+COPY docker-entrypoint.py /usr/local/bin/docker-entrypoint.py
 
 EXPOSE 5050
 VOLUME ["/data"]
 
-ENTRYPOINT ["/app/.venv/bin/lisa-pro-ui"]
+ENTRYPOINT ["python3", "/usr/local/bin/docker-entrypoint.py"]

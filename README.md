@@ -64,7 +64,7 @@ docker run -d --name lisa-pro-ui --restart unless-stopped \
   lisa-pro-ui:latest
 ```
 
-Open `http://<host-address>:5050` from a device that can reach the Docker host. The example uses a named Docker volume (`lisa-pro-ui-data`) mounted at `/data`; its files are managed by Docker and do not appear in the repository's `data/` directory. The settings file inside the volume is `/data/control.json`. To store it in a visible host directory instead, replace the volume argument with an absolute bind mount such as `-v /path/on/host/data:/data` and make that directory writable by the container user (UID 10001).
+Open `http://<host-address>:5050` from a device that can reach the Docker host. The example uses a named Docker volume (`lisa-pro-ui-data`) mounted at `/data`; its files are managed by Docker and do not appear in the repository's `data/` directory. The settings file inside the volume is `/data/control.json`. At startup, the container assigns the mounted data directory and control files to UID 10001, then runs the app as that unprivileged user. A bind mount such as `-v /path/on/host/data:/data` will therefore change that host directory's ownership to UID 10001.
 
 `LISA_PRO_DATA` selects the directory for local control settings. It defaults to `./data`; the settings file is `control.json` inside that directory. Keep this file if you want to preserve your local overrides between runs.
 
