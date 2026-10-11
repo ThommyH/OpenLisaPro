@@ -5,9 +5,7 @@ from pathlib import Path
 from lisa_pro_ui.app import create_app
 
 
-def test_version_endpoint_compares_current_build_with_latest_main_commit(tmp_path, monkeypatch):
-    commit = "a" * 40
-
+def test_version_endpoint_compares_current_release_with_latest_tag(tmp_path, monkeypatch):
     class FakeResponse:
         def __enter__(self):
             return self
@@ -16,9 +14,9 @@ def test_version_endpoint_compares_current_build_with_latest_main_commit(tmp_pat
             return None
 
         def read(self):
-            return json.dumps({"sha": commit}).encode()
+            return json.dumps([{"name": "0.1.25"}, {"name": "0.1.27"}, {"name": "release-notes"}]).encode()
 
-    monkeypatch.setenv("APP_GIT_COMMIT", commit)
+    monkeypatch.setenv("APP_VERSION", "0.1.27")
     monkeypatch.setattr("lisa_pro_ui.app.urlopen", lambda request, timeout: FakeResponse())
     app = create_app(data_dir=tmp_path, start_controller=False)
 
@@ -26,15 +24,13 @@ def test_version_endpoint_compares_current_build_with_latest_main_commit(tmp_pat
 
     assert response.status_code == 200
     body = response.get_json()
-    assert body["current_commit"] == commit
-    assert body["latest_commit"] == commit
+    assert body["version"] == "0.1.27"
+    assert body["latest_version"] == "0.1.27"
     assert body["is_latest"] is True
 
 
-def test_version_endpoint_matches_abbreviated_build_commit(tmp_path, monkeypatch):
-    full_commit = "e64f0975504b2e2c489feebfeebbf76fec4ec41e"
-    monkeypatch.setenv("APP_GIT_COMMIT", full_commit[:7])
-
+def test_version_endpoint_detects_newer_release_tag(tmp_path, monkeypatch):
+    monkeypatch.setenv("APP_VERSION", "0.1.26")
     class FakeResponse:
         def __enter__(self):
             return self
@@ -43,15 +39,17 @@ def test_version_endpoint_matches_abbreviated_build_commit(tmp_path, monkeypatch
             return False
 
         def read(self):
-            return json.dumps({"sha": full_commit}).encode()
+            return json.dumps([{"name": "v0.1.27"}, {"name": "0.1.9"}]).encode()
 
     monkeypatch.setattr("lisa_pro_ui.app.urlopen", lambda *_args, **_kwargs: FakeResponse())
     app = create_app(data_dir=tmp_path, start_controller=False)
 
     body = app.test_client().get("/api/version?refresh=1").get_json()
 
-    assert body["current_commit"] == full_commit[:7]
-    assert body["is_latest"] is True
+    assert body["version"] == "0.1.26"
+    assert body["latest_version"] == "v0.1.27"
+    assert body["is_latest"] is False
+    assert body["latest_url"].endswith("/tree/v0.1.27")
 
 
 def test_control_get_and_post(tmp_path: Path):

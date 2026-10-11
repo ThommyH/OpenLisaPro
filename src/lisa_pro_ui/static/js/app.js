@@ -68,28 +68,28 @@
     if (!status || !label || !detail) return;
     if (button) button.disabled = true;
     status.dataset.state = "checking";
-    label.textContent = "Checking GitHub…";
+    label.textContent = "Checking releases…";
     try {
       const result = await api(`/api/version${force ? "?refresh=1" : ""}`);
-      const current = String(result.current_commit || "unknown");
-      const latest = String(result.latest_commit || "");
-      label.href = result.latest_url || "https://github.com/ThommyH/OpenLisaPro/commits/main";
+      const current = String(result.version || "development");
+      const latest = String(result.latest_version || "");
+      label.href = result.latest_url || "https://github.com/ThommyH/OpenLisaPro/tags";
       if (!latest) {
         status.dataset.state = "error";
-        label.textContent = "GitHub check unavailable";
-        detail.textContent = `Build ${result.version} · try again later`;
-      } else if (result.is_latest === true || current.toLowerCase() === latest.toLowerCase() || latest.toLowerCase().startsWith(current.toLowerCase())) {
+        label.textContent = "Release check unavailable";
+        detail.textContent = `Release ${current} · try again later`;
+      } else if (result.is_latest === true) {
         status.dataset.state = "current";
         label.textContent = "Up to date";
-        detail.textContent = `Build ${result.version} · ${latest.slice(0, 7)}`;
-      } else if (current === "unknown") {
+        detail.textContent = `Release ${current}`;
+      } else if (current === "development") {
         status.dataset.state = "error";
-        label.textContent = "Build commit unavailable";
-        detail.textContent = `Build ${result.version} · latest ${latest.slice(0, 7)}`;
+        label.textContent = "Development build";
+        detail.textContent = `Latest release ${latest}`;
       } else {
         status.dataset.state = "outdated";
         label.textContent = "Update available";
-        detail.textContent = `Running ${result.version} · latest ${latest.slice(0, 7)}`;
+        detail.textContent = `Running ${current} · latest ${latest}`;
       }
       status.title = result.checked_at ? `Checked ${new Date(result.checked_at * 1000).toLocaleString()}` : "";
     } catch (error) {

@@ -6,6 +6,7 @@ import atexit
 import json
 import math
 import os
+import re
 import threading
 import time
 from copy import deepcopy
@@ -23,6 +24,18 @@ PACKAGE_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = Path(os.environ.get("LISA_PRO_DATA", PACKAGE_DIR.parent.parent / "data"))
 FLOW_EVENT_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
 FLOW_EVENT_PAGE_SIZE = 20
+
+
+def _release_version_key(value: object) -> tuple[tuple[int, ...], int, str] | None:
+    """Return a sortable key for numeric release tags such as v1.2.3."""
+    match = re.fullmatch(r"v?(\d+(?:\.\d+)*)(?:[-+](.+))?", str(value or "").strip(), re.IGNORECASE)
+    if not match:
+        return None
+    parts = tuple(int(part) for part in match.group(1).split("."))
+    # Stable releases sort after prereleases with the same numeric version.
+    padded_parts = (parts + (0,) * 8)[:8]
+    suffix = match.group(2) or ""
+    return padded_parts, int(not suffix), suffix.lower()
 
 
 def create_app(
@@ -50,7 +63,7 @@ def create_app(
     )
     app.config["CONTROL_STORE"] = store
     app.config["FAN_CONTROLLER"] = controller
-    update_cache = {"checked_at": 0.0, "latest_commit": None, "error": None}
+    update_cache = {"checked_at": 0.0, "latest_version": None, "error": None}
     update_cache_lock = threading.Lock()
 
     def client() -> LisaProClient:
@@ -67,10 +80,10 @@ def create_app(
     @app.get("/api/version")
     def version_status():
         try:
-            current_version = package_version("lisa-pro-ui")
+            installed_version = package_version("lisa-pro-ui")
         except PackageNotFoundError:
-            current_version = "development"
-        current_commit = os.environ.get("APP_GIT_COMMIT", os.environ.get("GIT_COMMIT", "unknown"))
+            installed_version = "development"
+        current_version = os.environ.get("APP_VERSION", installed_version)
         force = request.args.get("refresh") == "1"
         now = time.time()
         cache_ttl = 30 if update_cache["error"] else 300
@@ -81,35 +94,34 @@ def create_app(
                 if force or now - update_cache["checked_at"] >= cache_ttl:
                     try:
                         req = Request(
-                            "https://api.github.com/repos/ThommyH/OpenLisaPro/commits/main",
+                            "https://api.github.com/repos/ThommyH/OpenLisaPro/tags?per_page=100",
                             headers={"Accept": "application/vnd.github+json", "User-Agent": "OpenLisaPro"},
                         )
                         with urlopen(req, timeout=4) as response:
                             payload = json.loads(response.read().decode("utf-8"))
-                        update_cache.update(
-                            checked_at=now,
-                            latest_commit=str(payload["sha"]),
-                            error=None,
-                        )
+                        tags = [
+                            str(item.get("name", ""))
+                            for item in payload
+                            if isinstance(item, dict) and _release_version_key(item.get("name")) is not None
+                        ]
+                        latest_version = max(tags, key=_release_version_key) if tags else None
+                        update_cache.update(checked_at=now, latest_version=latest_version, error=None)
                     except Exception as exc:  # noqa: BLE001 — remote check must not affect control
-                        update_cache.update(checked_at=now, latest_commit=None, error=str(exc))
-        latest_commit = update_cache["latest_commit"]
-        build_commit = current_commit.strip().lower()
-        latest_sha = str(latest_commit or "").strip().lower()
+                        update_cache.update(checked_at=now, latest_version=None, error=str(exc))
+        latest_version = update_cache["latest_version"]
         is_latest = bool(
-            latest_sha
-            and build_commit != "unknown"
-            and (build_commit == latest_sha or latest_sha.startswith(build_commit) or build_commit.startswith(latest_sha))
+            latest_version
+            and _release_version_key(current_version) is not None
+            and _release_version_key(current_version) == _release_version_key(latest_version)
         )
         return jsonify(
             {
                 "version": current_version,
-                "current_commit": current_commit,
-                "latest_commit": latest_commit,
+                "latest_version": latest_version,
                 "is_latest": is_latest,
                 "checked_at": update_cache["checked_at"],
                 "error": update_cache["error"],
-                "latest_url": f"https://github.com/ThommyH/OpenLisaPro/commit/{latest_commit}" if latest_commit else "https://github.com/ThommyH/OpenLisaPro/commits/main",
+                "latest_url": f"https://github.com/ThommyH/OpenLisaPro/tree/{latest_version}" if latest_version else "https://github.com/ThommyH/OpenLisaPro/tags",
             }
         )
 

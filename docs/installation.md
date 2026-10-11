@@ -51,6 +51,6 @@ The image runs as UID 10001. On startup, the entrypoint assigns the mounted data
 | `HOST` | `0.0.0.0` | Web server bind address |
 | `PORT` | `5050` | Web server port |
 | `FLASK_DEBUG` | `0` | Enable Flask debug mode when set to `1` |
-| `APP_GIT_COMMIT` | Build-provided | Commit shown by the update indicator; Docker builds set this automatically |
+| `APP_VERSION` | Build-provided | Release version shown by the update indicator; Docker builds set this from `pyproject.toml` |
 
 Keep the app on a trusted network. It can change growbox settings and fan operation. See [Using local fan control](control.md) before enabling the controller.

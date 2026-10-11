@@ -2,6 +2,13 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.28] - 2026-10-11
+
+### Changed
+
+- Compare the running package release version with GitHub version tags instead of comparing an embedded source commit with the latest `main` commit.
+- Embed the package release version in Docker images as `APP_VERSION`.
+
 ## [0.1.27] - 2026-10-11
 
 ### Changed

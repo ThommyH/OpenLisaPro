@@ -231,7 +231,7 @@ wheels = [
 
 [[package]]
 name = "lisa-pro-ui"
-version = "0.1.27"
+version = "0.1.28"
 source = { editable = "." }
 dependencies = [
     { name = "flask" },

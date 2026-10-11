@@ -33,7 +33,7 @@ To publish both tags to the configured registry, run:
 make publish
 ```
 
-The default registry (`192.168.178.69:5555`) serves plain HTTP. `make publish` uses a temporary BuildKit builder configured with `http = true`, then removes that builder. This avoids the Docker daemon's HTTPS-only error without changing Docker Desktop or daemon settings. Use `make build` for a local image build; use `make publish` to build and push. Override `REGISTRY` and `IMAGE_NAME` as needed. `APP_GIT_COMMIT` is embedded in the image so the dashboard can report whether it is running the latest `main` commit.
+The default registry (`192.168.178.69:5555`) serves plain HTTP. `make publish` uses a temporary BuildKit builder configured with `http = true`, then removes that builder. This avoids the Docker daemon's HTTPS-only error without changing Docker Desktop or daemon settings. Use `make build` for a local image build; use `make publish` to build and push. Override `REGISTRY` and `IMAGE_NAME` as needed. The package release version is embedded as `APP_VERSION`; the dashboard compares it with the latest version tag on GitHub.
 
 ## Release checklist
 
@@ -41,7 +41,7 @@ The default registry (`192.168.178.69:5555`) serves plain HTTP. `make publish` u
 2. Update the README, specifications, and [`CHANGELOG.md`](../CHANGELOG.md) when user-visible behavior changes.
 3. Run `uv sync --group dev`, `uv run python -m pytest -q`, and `uv build`.
 4. Commit the release changes and create an annotated tag matching the version, for example `0.1.21`.
-5. Build and publish the Docker image after committing so `APP_GIT_COMMIT` points at the release commit: `make publish` pushes the versioned image and `latest` to the configured registry.
+5. Build and publish the Docker image after committing: `make publish` embeds the package version and pushes the versioned image and `latest` to the configured registry.
 6. Push the commit and tag, then publish the GitHub release with concise release notes.
 
 ## Project layout
