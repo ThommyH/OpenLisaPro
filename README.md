@@ -51,6 +51,21 @@ The app binds to `0.0.0.0` by default. You can choose a different bind address a
 HOST=127.0.0.1 PORT=5050 LISA_PRO_URL=http://192.168.1.50 uv run lisa-pro-ui
 ```
 
+### Docker
+
+Build and run the container, mounting a volume to preserve local control settings:
+
+```bash
+docker build -t lisa-pro-ui:latest .
+docker run -d --name lisa-pro-ui --restart unless-stopped \
+  -p 5050:5050 \
+  -e LISA_PRO_URL=http://192.168.1.50 \
+  -v lisa-pro-ui-data:/data \
+  lisa-pro-ui:latest
+```
+
+Open `http://<host-address>:5050` from a device that can reach the Docker host. The container stores `control.json` in `/data`.
+
 `LISA_PRO_DATA` selects the directory for local control settings. It defaults to `./data`; the settings file is `control.json` inside that directory. Keep this file if you want to preserve your local overrides between runs.
 
 | Variable | Default | Purpose |
