@@ -29,6 +29,8 @@ These screenshots use mock device data and show the dashboard at desktop and mob
 
 ![OpenLisaPro dashboard at mobile width](docs/screenshots/dashboard-mobile.png)
 
+See [Specifications](docs/specifications.md) for the full controller priorities, formulas, protection behavior, defaults, and UI requirements.
+
 ## Requirements
 
 - Python 3.9 or newer
