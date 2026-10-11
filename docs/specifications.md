@@ -7,6 +7,9 @@ This document describes the user-visible behavior of OpenLisaPro's local dashboa
 - OpenLisaPro is a Flask application and Python client for Lisa Pro / LuminaGrowX growboxes. The browser communicates with Flask; Flask communicates with the growbox HTTP API.
 - The dashboard displays inside and outside temperature, relative humidity, dew point, VPD, device state, stage, and fan readings.
 - Local control settings are stored in `control.json` in the configured data directory. Stage and mode overrides are local to OpenLisaPro; device factory presets remain separate until a device write is requested.
+- Controller fan/VPD samples are persisted to `controller-history.jsonl`, retained for the most recent 48 hours, and loaded after application restarts. The chart fetches retained history on demand so regular dashboard polling stays small.
+- The header compares the running build's embedded commit with the latest commit on GitHub's `main` branch. It checks on page load, periodically, and on request. Docker images embed the source commit as `APP_GIT_COMMIT`; builds without this value report that commit comparison is unavailable.
+- The fan calculation flowchart includes a collapsed-by-default event log of up to 20 recent controller path changes per page session. Selecting an event highlights its recorded flowchart path.
 - Local PID control is enabled for new/reset settings by default. `LISA_PRO_PID_ENABLED=0` changes that default. A saved setting or the Control tab toggle takes precedence.
 - Modes are `day`, `day_silent`, `night`, and `night_silent`. The active phase's light on/off schedule defines day and night, including schedules crossing midnight. The growbox silent schedule/active state selects the silent variant.
 
@@ -14,7 +17,7 @@ This document describes the user-visible behavior of OpenLisaPro's local dashboa
 
 Each stage and mode can have VPD min/max targets and fan min/max limits. Stage temperature settings include:
 
-- **Soft minimum / maximum:** optional temperature bounds shown in the stage controls. Exceeding the soft maximum adds a secondary fan request. The soft minimum does not reduce the fan request.
+- **Soft minimum / maximum:** optional temperature bounds shown in the stage controls, with a per-stage enable switch. Exceeding an enabled soft maximum adds a secondary fan request. Disabling the switch preserves the values but stops soft temperature adjustments. The soft minimum does not reduce the fan request.
 - **Maximum temperature:** optional hard temperature limit. Above this limit the controller prioritizes cooling and requests the mode's configured maximum fan speed.
 - **LED:** Day and Day silent output can be set separately. Night and Night silent LED output is always 0%.
 
@@ -25,7 +28,7 @@ Global PID settings include proportional, integral, and derivative gains; integr
 1. Resolve the current stage and mode from device status, the phase schedule, and silent-mode state. Read that mode's VPD target band and fan limits.
 2. Use the lower VPD bound as the selected target. Estimate the maximum VPD ventilation can achieve by evaluating outside-air dew point at the current inside temperature. Cap the selected target at that estimate when needed.
 3. Feed selected-target minus inside VPD to the PID. Within the deadband, request the configured fan minimum; when inside VPD is below target, map positive PID output to a higher fan request up to the configured maximum. The VPD fan request is the baseline.
-4. If inside temperature exceeds the stage's soft maximum, add `temperature difference × Temperature weight` percentage points to the VPD fan request. This boost applies even when VPD is outside its target band. It can raise the request above what VPD alone would request, but never lowers that request. The result remains bounded by the stage/mode fan limits. The default weight is 2 percentage points per °C; zero disables the boost.
+4. If inside temperature exceeds the stage's soft maximum, add `temperature difference × Temperature weight` percentage points to the VPD fan request. This boost applies even when VPD is outside its target band. It can raise the request above what VPD alone would request, but never lowers that request. The result remains bounded by the stage/mode fan limits. The default weight is 15 percentage points per °C; zero disables the boost.
 5. If inside temperature exceeds the hard maximum, the hard protection takes priority and requests the configured maximum fan speed. The normal ramp does not delay this safety command. Soft/VPD control resumes after temperature falls at least 0.5°C below the hard limit.
 6. Otherwise, ramp toward the combined request at the configured rate (default 15 percentage points per minute, updated every 5 seconds). The displayed command may therefore trail the ramp target.
 7. If the VPD target is unreachable due to outside-air moisture, or VPD has not improved while at maximum fan for the hold period, the controller can reduce fan demand in steps. It does not back off while the soft maximum is exceeded, so the temperature boost is preserved. Hard temperature protection also disables this backoff.
@@ -42,6 +45,7 @@ The fan command is written to the growbox as equal fan minimum and maximum value
 ## User interface
 
 - The UI supports desktop and mobile layouts and exposes the current fan command, ramp target, controller state, and calculation flowchart.
+- The history chart separates fan percentage and VPD (kPa) into aligned plots with independent scales. Each line can be toggled. Range presets cover 1, 6, 24, and 48 hours; zoom and older/newer controls navigate within available history.
 - The flowchart highlights the decisions used for the current fan request, including outside-dew-point target limiting, PID/deadband branch, soft-temperature boost, and command/ramp.
 - PID tuning controls are hidden by default. Stage controls include schedule times, VPD and fan ranges, soft temperature bounds, hard maximum temperature, and stage reset.
 - Settings and device operations can write to growbox hardware. Controller and persistence behavior should be developed/tested with mocks rather than assuming a live device is available.

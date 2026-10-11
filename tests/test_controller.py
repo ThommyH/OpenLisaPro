@@ -1,4 +1,5 @@
 from copy import deepcopy
+import json
 import time
 
 from lisa_pro_ui.controller import FanPidController
@@ -211,6 +212,52 @@ def make_temperature_controller(tmp_path):
     )
 
 
+def test_controller_history_persists_and_expires_after_two_days(tmp_path):
+    history_path = tmp_path / "controller-history.jsonl"
+    store = ConfigStore(tmp_path / "control.json")
+    now = time.time()
+    history_path.write_text(
+        json.dumps({"t": now - 3 * 24 * 60 * 60, "fan_command": 10})
+        + "\n"
+        + json.dumps({"t": now - 60, "fan_command": 42})
+        + "\n",
+        encoding="utf-8",
+    )
+
+    controller = FanPidController(
+        device_url="http://unused",
+        store=store,
+        history_path=history_path,
+        client_factory=TemperatureProtectionClient,
+    )
+
+    assert [point["fan_command"] for point in controller.history()] == [42]
+    assert len(history_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_controller_history_appends_samples_for_next_startup(tmp_path):
+    history_path = tmp_path / "controller-history.jsonl"
+    store = ConfigStore(tmp_path / "control.json")
+    controller = FanPidController(
+        device_url="http://unused",
+        store=store,
+        history_path=history_path,
+        client_factory=TemperatureProtectionClient,
+    )
+    controller._state.update({"fan_command": 37, "vpd_inside": 1.1, "mode": "day"})
+    controller._append_history(time.time())
+
+    restored = FanPidController(
+        device_url="http://unused",
+        store=store,
+        history_path=history_path,
+        client_factory=TemperatureProtectionClient,
+    )
+
+    assert restored.history()[0]["fan_command"] == 37
+    assert restored.history()[0]["vpd_inside"] == 1.1
+
+
 def test_over_temperature_commands_stage_max_fan(tmp_path):
     controller = make_temperature_controller(tmp_path)
     controller._tick(controller.store.get())
@@ -316,6 +363,25 @@ def test_soft_temperature_hot_prevents_unreachable_vpd_backoff(tmp_path):
     assert state["temperature_adjustment_pct"] == 4.0
     assert state["throttling"] is False
     assert state["fan_ramp_target"] >= 24
+
+
+def test_disabled_soft_temperature_limits_do_not_adjust_fan(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update(
+        {
+            "temperature_limits": {},
+            "temperature_soft_limits": {"0": {"enabled": False, "max_temp_c": 23}},
+            "vpd_targets": {"0": {"day": {"vpd_min": 0.8, "vpd_max": 1.2}}},
+            "pid": {"kp": 0, "ki": 0, "kd": 0, "temperature_weight_pct_per_c": 2},
+        }
+    )
+    TemperatureProtectionClient.status_data.update({"temp_c": 27.0, "humi_rh": 70.0})
+
+    controller._tick(controller.store.get())
+
+    state = controller.snapshot()["state"]
+    assert state["temperature_soft_active"] is False
+    assert state["temperature_adjustment_pct"] == 0.0
 
 
 def test_hot_outside_warns_dims_led_and_restores_after_cooling(tmp_path):

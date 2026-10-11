@@ -183,15 +183,22 @@ def test_soft_temperature_limits_normalize_optional_bounds_and_order(tmp_path: P
         }
     )
     assert store.get()["temperature_soft_limits"] == {
-        "0": {"min_temp_c": 18.0, "max_temp_c": 27.0},
-        "1": {"max_temp_c": 29.0},
-        "2": {"min_temp_c": 50.0},
+        "0": {"min_temp_c": 18.0, "max_temp_c": 27.0, "enabled": True},
+        "1": {"max_temp_c": 29.0, "enabled": True},
+        "2": {"min_temp_c": 50.0, "enabled": True},
     }
+
+
+def test_soft_temperature_limits_keep_explicit_disabled_state(tmp_path: Path):
+    store = ConfigStore(tmp_path / "c.json")
+    store.update({"temperature_soft_limits": {"0": {"enabled": False, "max_temp_c": 26}}})
+
+    assert store.get()["temperature_soft_limits"]["0"] == {"enabled": False, "max_temp_c": 26.0}
 
 
 def test_temperature_weight_defaults_and_is_bounded(tmp_path: Path):
     store = ConfigStore(tmp_path / "c.json")
-    assert store.get()["pid"]["temperature_weight_pct_per_c"] == 2.0
+    assert store.get()["pid"]["temperature_weight_pct_per_c"] == 15.0
     store.update({"pid": {"temperature_weight_pct_per_c": 100}})
     assert store.get()["pid"]["temperature_weight_pct_per_c"] == 20.0
 
@@ -226,7 +233,7 @@ def test_reset_stage_restores_factory_seeded_local_values_and_preserves_other_st
     assert result["led"]["0"]["day"] == 55.0
     assert "0" not in result["temperature_limits"]
     assert "0" not in result["temperature_soft_limits"]
-    assert result["temperature_soft_limits"]["1"] == {"min_temp_c": 19.0}
+    assert result["temperature_soft_limits"]["1"] == {"min_temp_c": 19.0, "enabled": True}
     assert result["fan_limits"]["1"]["day"] == {"fan_min": 15.0, "fan_max": 25.0}
     assert result["temperature_limits"]["1"]["max_temp_c"] == 32.0
 

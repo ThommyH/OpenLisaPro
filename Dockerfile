@@ -1,11 +1,13 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
+ARG APP_GIT_COMMIT=unknown
 ENV UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     PYTHONUNBUFFERED=1 \
     HOST=0.0.0.0 \
     PORT=5050 \
-    LISA_PRO_DATA=/data
+    LISA_PRO_DATA=/data \
+    APP_GIT_COMMIT=${APP_GIT_COMMIT}
 
 WORKDIR /app
 

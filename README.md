@@ -2,7 +2,7 @@
 
 OpenLisaPro is a self-hosted web dashboard and Python client for Lisa Pro / LuminaGrowX growboxes. The dashboard reads live climate and device status, lets you manage growbox settings, and can run a local fan controller that adjusts exhaust speed to help maintain a VPD target.
 
-The web app runs on your own computer or server. It talks to the growbox over its HTTP API; the browser talks only to the local Flask app. Local VPD, fan, LED, schedule, and PID overrides are stored on disk in `control.json`.
+The web app runs on your own computer or server. It talks to the growbox over its HTTP API; the browser talks only to the local Flask app. Local VPD, fan, LED, schedule, and PID overrides are stored on disk in `control.json`; fan/VPD samples are persisted in `controller-history.jsonl` for two days.
 
 ## What it does
 
@@ -10,14 +10,16 @@ The web app runs on your own computer or server. It talks to the growbox over it
 - Lets you manage stage-specific hard and soft temperature limits, VPD targets, fan limits, separate Day and Day silent LED levels, and light-on/light-off schedules. Night and Night silent LED power is fixed at 0%.
 - Runs a local PID controller for exhaust fan speed, enabled by default. It uses inside VPD as the control goal, estimates the ventilation limit from outside dew point at inside temperature, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
 - Displays the controller's current mode, status, and ramp target, with an expandable explanation of the calculation and its states.
-- Provides a chart of recent climate and fan history, and controls for growbox settings such as silent operation, door actions, and MQTT.
+- Includes a collapsed event log in the fan flowchart; selecting an entry highlights the path taken for that controller decision.
+- Provides a two-day fan and VPD history chart with selectable lines, independent scales, range presets, and zoom/navigation controls, plus controls for growbox settings such as silent operation, door actions, and MQTT.
+- Checks the running build commit against the latest commit on the repository's `main` branch and shows update status in the header.
 - Includes `LisaProClient`, a small typed Python wrapper for the growbox API.
 
 ## What OpenLisaPro adds
 
 The growbox continues to operate its own lighting, sensors, and built-in schedules. OpenLisaPro adds a local web control layer that reads the device API and can command exhaust fan settings. It stores its own per-stage VPD, fan, temperature, LED, and schedule overrides in `control.json`; these settings are separate from the growbox's factory presets.
 
-For fan control, OpenLisaPro uses inside VPD as its main goal and estimates what ventilation can achieve from outside dew point. Its optional soft temperature maximum adds a low-gain correction above the VPD fan request, even when VPD is outside its configured range. Temperature control never lowers the VPD request: a drier-than-target result is preferable to leaving the air too humid. The global **Temperature weight %/°C** controls the correction (default 2 percentage points per degree; set to zero to turn it off). The separate hard maximum temperature remains a safety override and commands the configured maximum fan speed.
+For fan control, OpenLisaPro uses inside VPD as its main goal and estimates what ventilation can achieve from outside dew point. Its optional soft temperature maximum adds a low-gain correction above the VPD fan request, even when VPD is outside its configured range. Temperature control never lowers the VPD request: a drier-than-target result is preferable to leaving the air too humid. The global **Temperature weight %/°C** controls the correction (default 15 percentage points per degree; set to zero to turn it off). The separate hard maximum temperature remains a safety override and commands the configured maximum fan speed.
 
 The UI can be viewed on desktop or mobile. The PID loop is enabled for new installations and can write fan settings to the connected device. Disable it with the Control tab or set `LISA_PRO_PID_ENABLED=0` to change the default for new or reset settings.
 
@@ -87,13 +89,15 @@ Open `http://<host-address>:5050` from a device that can reach the Docker host. 
 
 ## Using local fan control
 
-Open the **Control** tab to configure per-stage VPD targets, fan limits, and optional soft temperature minimum/maximum values. Local PID is enabled by default for new installations. Set `LISA_PRO_PID_ENABLED=0` to make the default disabled. Existing saved control settings and the Control tab toggle take precedence. The **Chart** tab shows recent history, and the **Device** tab contains growbox settings. PID tuning settings are collapsed by default. Expand them to adjust the gains, ramp rate, update interval, deadband, and temperature correction weight.
+Open the **Control** tab to configure per-stage VPD targets, fan limits, and optional soft temperature minimum/maximum values. Each stage has an **Enable soft temperature fan boost** switch, so you can disable its configured limits without clearing them. Local PID is enabled by default for new installations. Set `LISA_PRO_PID_ENABLED=0` to make the default disabled. Existing saved control settings and the Control tab toggle take precedence. The **Chart** tab keeps up to two days of fan and VPD history, including across app restarts. Toggle lines to simplify the view, use the 1/6/24/48 hour presets, zoom with +/−, and move through older samples with the navigation buttons. Fan speed and VPD use separate aligned charts with independent scales. The **Device** tab contains growbox settings. PID tuning settings are collapsed by default. Expand them to adjust the gains, ramp rate, update interval, deadband, and temperature correction weight.
+
+The top-right build indicator checks the running commit against the latest commit on GitHub `main` at startup and periodically. Use its refresh button to check immediately. Docker builds include their source commit; development builds without `APP_GIT_COMMIT` can show the latest commit but cannot verify whether the checkout is current.
 
 Enable local PID control to let OpenLisaPro command the exhaust fan. The live status shows the current fan command; while it is ramping, it also shows the target speed. The configured light-on and light-off times for the active stage determine whether the controller uses day or night settings. The LEDs' current on/off state does not define the scheduled day/night mode.
 
 ### Stage temperature protection
 
-Set optional **Soft temperature min/max** values for each stage in the Control tab. When inside temperature exceeds the stage's soft maximum, OpenLisaPro adds a small proportional boost to the VPD fan request, whether or not VPD is inside its target band. This adjustment can only increase the request; it never reduces ventilation needed to meet the VPD target. The global PID setting **Temperature weight %/°C** sets the boost per degree (default 2; set it to 0 to disable). Fan commands always stay within the configured stage fan limits. The soft minimum does not lower fan speed below the VPD request.
+Set optional **Soft temperature min/max** values for each stage in the Control tab. When inside temperature exceeds the stage's soft maximum, OpenLisaPro adds a small proportional boost to the VPD fan request, whether or not VPD is inside its target band. This adjustment can only increase the request; it never reduces ventilation needed to meet the VPD target. The global PID setting **Temperature weight %/°C** sets the boost per degree (default 15; set it to 0 to disable). Fan commands always stay within the configured stage fan limits. The soft minimum does not lower fan speed below the VPD request.
 
 The separate optional **Maximum temperature** is a hard safety limit. When inside temperature rises above it, the controller prioritizes cooling and commands that mode's configured maximum fan speed. VPD and soft temperature control resume after temperature falls at least 0.5°C below the hard limit. The PID ramp default for new or reset settings is 15% per minute.
 

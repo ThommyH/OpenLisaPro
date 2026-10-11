@@ -6,11 +6,17 @@
     phases: [],
     control: null,
     history: [],
+    chartHours: 6,
+    chartOffsetHours: 0,
+    chartVisible: { fan_command: true, fan_actual: true, fan_min_limit: false, fan_max_limit: false, vpd_inside: true, vpd_outside: false, vpd_target: true },
+    chartLoaded: false,
     controlDirty: false,
     controlHydrated: false,
     startDirty: false,
     dayDirty: false,
     silentEnabled: false,
+    flowEvents: [],
+    lastFlowSignature: null,
   };
 
   const MODE_LABELS = {
@@ -31,13 +37,13 @@
   const LED_MODES = ["day", "day_silent", "night", "night_silent"];
 
   const CHART_SERIES = [
-    { key: "fan_command", label: "Fan cmd %", color: "#b8f255", axis: "fan" },
-    { key: "fan_actual", label: "Fan actual %", color: "#6dffb0", axis: "fan" },
-    { key: "fan_min_limit", label: "Min limit %", color: "rgba(238,247,240,0.35)", axis: "fan", dash: true },
-    { key: "fan_max_limit", label: "Max limit %", color: "rgba(255,184,77,0.55)", axis: "fan", dash: true },
-    { key: "vpd_inside", label: "VPD in", color: "#7ec8ff", axis: "vpd" },
-    { key: "vpd_outside", label: "VPD out", color: "#c4a1ff", axis: "vpd" },
-    { key: "vpd_target", label: "VPD target", color: "#ffb84d", axis: "vpd" },
+    { key: "fan_command", label: "Fan command", color: "#b8f255", axis: "fan" },
+    { key: "fan_actual", label: "Fan actual", color: "#6dffb0", axis: "fan" },
+    { key: "fan_min_limit", label: "Fan min", color: "rgba(238,247,240,0.55)", axis: "fan", dash: true },
+    { key: "fan_max_limit", label: "Fan max", color: "#ffb84d", axis: "fan", dash: true },
+    { key: "vpd_inside", label: "Inside VPD", color: "#7ec8ff", axis: "vpd" },
+    { key: "vpd_outside", label: "Outside VPD", color: "#c4a1ff", axis: "vpd" },
+    { key: "vpd_target", label: "VPD target", color: "#ffb84d", axis: "vpd", dash: true },
   ];
 
   function toast(msg) {
@@ -48,6 +54,47 @@
     toast._t = setTimeout(() => {
       el.hidden = true;
     }, 2800);
+  }
+
+  async function checkBuildVersion(force = false) {
+    const status = $("buildStatus");
+    const label = $("buildLabel");
+    const detail = $("buildDetail");
+    const button = $("checkBuild");
+    if (!status || !label || !detail) return;
+    if (button) button.disabled = true;
+    status.dataset.state = "checking";
+    label.textContent = "Checking GitHub…";
+    try {
+      const result = await api(`/api/version${force ? "?refresh=1" : ""}`);
+      const current = String(result.current_commit || "unknown");
+      const latest = String(result.latest_commit || "");
+      label.href = result.latest_url || "https://github.com/ThommyH/OpenLisaPro/commits/main";
+      if (!latest) {
+        status.dataset.state = "error";
+        label.textContent = "GitHub check unavailable";
+        detail.textContent = `Build ${result.version} · try again later`;
+      } else if (current.toLowerCase() === latest.toLowerCase()) {
+        status.dataset.state = "current";
+        label.textContent = "Up to date";
+        detail.textContent = `Build ${result.version} · ${latest.slice(0, 7)}`;
+      } else if (current === "unknown") {
+        status.dataset.state = "error";
+        label.textContent = "Build commit unavailable";
+        detail.textContent = `Build ${result.version} · latest ${latest.slice(0, 7)}`;
+      } else {
+        status.dataset.state = "outdated";
+        label.textContent = "Update available";
+        detail.textContent = `Running ${result.version} · latest ${latest.slice(0, 7)}`;
+      }
+      status.title = result.checked_at ? `Checked ${new Date(result.checked_at * 1000).toLocaleString()}` : "";
+    } catch (error) {
+      status.dataset.state = "error";
+      label.textContent = "Version check failed";
+      detail.textContent = error.message || "Unable to contact the local version endpoint";
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
 
   function confirmAction(message) {
@@ -389,41 +436,61 @@
   function updateFanFlow(st, enabled) {
     const chart = document.querySelector(".fan-flowchart");
     if (!chart) return;
-    chart.querySelectorAll(".active-path").forEach((el) => el.classList.remove("active-path"));
-    const mark = (attr, key) => {
-      const el = chart.querySelector(`[${attr}="${key}"]`);
-      if (el) el.classList.add("active-path");
-    };
-    mark("data-flow-step", "resolve-stage");
+    const steps = ["resolve-stage"];
+    const branches = [];
+    const addStep = (key) => steps.push(key);
+    const addBranch = (key) => branches.push(key);
+    addStep("pid-enabled");
     if (!enabled || st.reason === "disabled") {
-      mark("data-flow-step", "pid-enabled");
-      mark("data-flow-branch", "pid-disabled");
+      addBranch("pid-disabled");
+    } else {
+      addBranch("pid-active");
+      addStep("measure-vpd");
+      if (st.reason !== "no_inside_vpd") {
+        addStep("temperature-check");
+        if (st.temperature_active) {
+          addBranch("temperature-active");
+          addStep("write-command");
+        } else {
+          addBranch("temperature-normal");
+          addStep("estimate-limit");
+          addStep("target-check");
+          addBranch(st.vpd_reachable === false ? "target-limited" : "target-reachable");
+          addStep("deadband-check");
+          const within = st.pid_error != null && Math.abs(Number(st.pid_error)) <= Number(st.pid_deadband_kpa ?? 0.03);
+          addBranch(within ? "within-deadband" : "pid-correction");
+          addStep("soft-temperature-check");
+          addBranch(st.temperature_soft_active ? "soft-temperature-adjust" : "soft-temperature-hold");
+          addStep("apply-ramp");
+          addStep("write-command");
+        }
+      }
+    }
+    const signature = JSON.stringify([steps, branches, st.reason, !!st.throttling]);
+    const changed = signature !== state.lastFlowSignature;
+    if (changed) {
+      state.lastFlowSignature = signature;
+      const reason = !enabled || st.reason === "disabled" ? "PID disabled"
+        : st.reason === "no_inside_vpd" ? "Waiting for inside VPD"
+          : st.temperature_active ? (st.temperature_warning || (st.reason === "temperature_limited_by_outside" ? "High temperature · outside too warm" : "High temperature · fan max"))
+            : st.throttling ? "Backing off · target unreachable"
+              : st.vpd_reachable === false ? "Outside-air limited"
+                : st.temperature_soft_active ? "Soft temperature boost"
+                  : st.reason === "ramping" ? "Ramping toward fan request" : "Tracking VPD target";
+      state.flowEvents.unshift({
+        at: Date.now(), title: reason, steps: [...steps], branches: [...branches], signature,
+      });
+      state.flowEvents = state.flowEvents.slice(0, 20);
+      renderFlowEvents();
+    }
+    if (changed) applyFlowPath({ steps, branches });
+    if (!enabled || st.reason === "disabled") {
       $("flowCommandValue").textContent = "Current command: PID disabled";
       return;
     }
-    mark("data-flow-step", "pid-enabled");
-    mark("data-flow-branch", "pid-active");
-    mark("data-flow-step", "measure-vpd");
     if (st.reason === "no_inside_vpd") {
       $("flowCommandValue").textContent = "Current command: waiting for inside VPD";
       return;
-    }
-    mark("data-flow-step", "temperature-check");
-    if (st.temperature_active) {
-      mark("data-flow-branch", "temperature-active");
-      mark("data-flow-step", "write-command");
-    } else {
-      mark("data-flow-branch", "temperature-normal");
-      mark("data-flow-step", "estimate-limit");
-      mark("data-flow-step", "target-check");
-      mark("data-flow-branch", st.vpd_reachable === false ? "target-limited" : "target-reachable");
-      mark("data-flow-step", "deadband-check");
-      const within = st.pid_error != null && Math.abs(Number(st.pid_error)) <= Number(st.pid_deadband_kpa ?? 0.03);
-      mark("data-flow-branch", within ? "within-deadband" : "pid-correction");
-      mark("data-flow-step", "soft-temperature-check");
-      mark("data-flow-branch", st.temperature_soft_active ? "soft-temperature-adjust" : "soft-temperature-hold");
-      mark("data-flow-step", "apply-ramp");
-      mark("data-flow-step", "write-command");
     }
     const command = st.fan_command == null ? "—" : `${fmt0(st.fan_command)}%`;
     const target = st.fan_ramp_target == null ? null : `${fmt0(st.fan_ramp_target)}% target`;
@@ -434,6 +501,44 @@
     $("flowCommandValue").textContent = `Current command: ${command}${st.reason === "ramping" && target ? ` → ${target} (ramping)` : ""}${tempNote}`;
   }
 
+  function applyFlowPath(path) {
+    const chart = document.querySelector(".fan-flowchart");
+    if (!chart) return;
+    chart.querySelectorAll(".active-path").forEach((el) => el.classList.remove("active-path"));
+    path.steps.forEach((key) => chart.querySelector(`[data-flow-step="${key}"]`)?.classList.add("active-path"));
+    path.branches.forEach((key) => chart.querySelector(`[data-flow-branch="${key}"]`)?.classList.add("active-path"));
+  }
+
+  function renderFlowEvents() {
+    const list = $("flowEventList");
+    if (!list) return;
+    list.replaceChildren();
+    if (!state.flowEvents.length) {
+      const empty = document.createElement("p");
+      empty.className = "flow-event-empty";
+      empty.textContent = "Controller decisions will appear here.";
+      list.append(empty);
+      return;
+    }
+    state.flowEvents.forEach((event, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "flow-event";
+      button.classList.toggle("selected", index === 0);
+      const time = document.createElement("time");
+      time.dateTime = new Date(event.at).toISOString();
+      time.textContent = new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      const title = document.createElement("span");
+      title.textContent = event.title;
+      button.append(time, title);
+      button.addEventListener("click", () => {
+        list.querySelectorAll(".flow-event").forEach((item) => item.classList.toggle("selected", item === button));
+        applyFlowPath(event);
+      });
+      list.append(button);
+    });
+  }
+
   function renderControl(snap, { forceForm = false } = {}) {
     state.control = snap;
     const cfg = snap.config || {};
@@ -441,8 +546,8 @@
     updateControlLive(st, cfg.enabled);
 
     if (snap.history) {
-      state.history = snap.history;
-      drawChart(state.history);
+      mergeHistory(snap.history);
+      if (!$('tab-chart').hidden) drawChart(state.history);
     }
 
     if (state.controlDirty && !forceForm) return;
@@ -456,7 +561,7 @@
     $("pidRamp").value = pid.ramp_pct_per_min ?? "";
     $("pidInterval").value = pid.interval_s ?? "";
     $("pidDeadband").value = pid.deadband_kpa ?? "";
-    $("pidTemperatureWeight").value = pid.temperature_weight_pct_per_c ?? 2;
+    $("pidTemperatureWeight").value = pid.temperature_weight_pct_per_c ?? 15;
     renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {}, cfg.vpd_targets || {}, cfg.temperature_limits || {}, cfg.temperature_soft_limits || {});
     state.controlHydrated = true;
     state.controlDirty = false;
@@ -655,6 +760,10 @@
           </label>
           <div class="soft-temperature-limits">
             <strong>Soft temperature limits for this stage</strong>
+            <label class="soft-temperature-toggle">
+              <input type="checkbox" ${softTemperature.enabled === false ? "" : "checked"} data-soft-temperature-enabled-phase="${id}" />
+              Enable soft temperature fan boost
+            </label>
             <label>Minimum °C
               <input type="number" min="5" max="50" step="0.5" placeholder="Off" value="${softTemperature.min_temp_c ?? ""}" data-soft-temperature-phase="${id}" data-soft-temperature-field="min_temp_c" aria-label="${phase.name || `Phase ${id}`} soft minimum temperature in Celsius" />
             </label>
@@ -760,6 +869,9 @@
 
   function collectSoftTemperatureLimits() {
     const out = {};
+    document.querySelectorAll("#fanLimitsRoot input[data-soft-temperature-enabled-phase]").forEach((el) => {
+      out[el.dataset.softTemperatureEnabledPhase] = { enabled: el.checked };
+    });
     document.querySelectorAll("#fanLimitsRoot input[data-soft-temperature-phase]").forEach((el) => {
       const value = el.value.trim();
       if (value === "") return;
@@ -800,102 +912,143 @@
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     const dpr = window.devicePixelRatio || 1;
-    const cssW = canvas.clientWidth || 960;
-    const cssH = 360;
+    const cssW = canvas.parentElement?.clientWidth || canvas.clientWidth || 960;
+    const cssH = window.matchMedia("(max-width: 900px)").matches ? 440 : 520;
     canvas.width = Math.floor(cssW * dpr);
     canvas.height = Math.floor(cssH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     const w = cssW;
     const h = cssH;
-    const pad = { t: 18, r: 54, b: 42, l: 46 };
+    const pad = { t: 24, r: 18, b: 32, l: 48 };
     ctx.clearRect(0, 0, w, h);
     ctx.fillStyle = "rgba(8,28,20,0.35)";
     ctx.fillRect(0, 0, w, h);
 
-    const legend = $("chartLegend");
-    if (legend) {
-      legend.innerHTML = CHART_SERIES.map(
-        (s) => `<span class="legend-item"><i style="background:${s.color}"></i>${s.label}</span>`
-      ).join("");
+    const seriesRoot = $("chartSeries");
+    if (seriesRoot && !seriesRoot.dataset.ready) {
+      seriesRoot.innerHTML = CHART_SERIES.map((series) => `<button type="button" class="chart-series-toggle" data-chart-series="${series.key}" aria-pressed="${!!state.chartVisible[series.key]}" style="--series-color:${series.color}">${series.label}</button>`).join("");
+      seriesRoot.dataset.ready = "1";
+      seriesRoot.querySelectorAll("[data-chart-series]").forEach((button) => button.addEventListener("click", () => {
+        const key = button.dataset.chartSeries;
+        state.chartVisible[key] = !state.chartVisible[key];
+        button.setAttribute("aria-pressed", String(state.chartVisible[key]));
+        drawChart(state.history);
+      }));
+    } else if (seriesRoot) {
+      seriesRoot.querySelectorAll("[data-chart-series]").forEach((button) => button.setAttribute("aria-pressed", String(!!state.chartVisible[button.dataset.chartSeries])));
     }
+
+    document.querySelectorAll("[data-chart-range]").forEach((button) => {
+      const active = Number(button.dataset.chartRange) === state.chartHours;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
 
     if (!history || history.length < 2) {
       ctx.fillStyle = "rgba(238,247,240,0.45)";
       ctx.font = "14px Outfit, sans-serif";
-      ctx.fillText("Waiting for PID samples…", pad.l, h / 2);
+      ctx.fillText("Collecting control history…", pad.l, h / 2);
       return;
     }
 
-    const plotW = w - pad.l - pad.r;
-    const plotH = h - pad.t - pad.b;
-    const t0 = history[0].t;
-    const t1 = history[history.length - 1].t || t0 + 1;
-    const span = Math.max(1, t1 - t0);
+    const availableStart = Number(history[0].t);
+    const availableEnd = Number(history[history.length - 1].t);
+    const rangeSeconds = state.chartHours * 3600;
+    const maxOffset = Math.max(0, (availableEnd - availableStart - rangeSeconds) / 3600);
+    state.chartOffsetHours = Math.max(0, Math.min(maxOffset, state.chartOffsetHours));
+    const end = availableEnd - state.chartOffsetHours * 3600;
+    const start = end - rangeSeconds;
+    const visible = history.filter((point) => Number(point.t) >= start && Number(point.t) <= end);
+    const plotLeft = pad.l;
+    const plotRight = w - pad.r;
+    const plotW = Math.max(1, plotRight - plotLeft);
+    const gap = 38;
+    const panelH = (h - pad.t - pad.b - gap) / 2;
+    const xOf = (t) => plotLeft + ((t - start) / rangeSeconds) * plotW;
+    const formatAxisTime = (t) => state.chartHours >= 24
+      ? new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })
+      : formatClock(t).slice(0, 5);
 
-    const xOf = (t) => pad.l + ((t - t0) / span) * plotW;
-    const yFan = (v) => pad.t + (1 - Math.max(0, Math.min(100, v)) / 100) * plotH;
-    const yVpd = (v) => pad.t + (1 - Math.max(0, Math.min(2.5, v)) / 2.5) * plotH;
-
-    // Horizontal grid + left/right axis labels
-    ctx.strokeStyle = "rgba(238,247,240,0.08)";
-    ctx.lineWidth = 1;
-    ctx.fillStyle = "rgba(238,247,240,0.4)";
-    ctx.font = "11px JetBrains Mono, monospace";
-    for (let i = 0; i <= 4; i++) {
-      const y = pad.t + (plotH * i) / 4;
-      ctx.beginPath();
-      ctx.moveTo(pad.l, y);
-      ctx.lineTo(pad.l + plotW, y);
-      ctx.stroke();
-      const fanLabel = String(100 - i * 25);
-      const vpdLabel = (2.5 - i * 0.625).toFixed(2);
-      ctx.fillText(fanLabel, 8, y + 4);
-      ctx.fillText(vpdLabel, w - 46, y + 4);
-    }
-
-    // Timeline (vertical ticks + clock labels)
-    const tickCount = Math.min(6, Math.max(2, Math.floor(plotW / 120)));
-    ctx.strokeStyle = "rgba(238,247,240,0.12)";
-    ctx.fillStyle = "rgba(238,247,240,0.55)";
-    for (let i = 0; i <= tickCount; i++) {
-      const t = t0 + (span * i) / tickCount;
-      const x = xOf(t);
-      ctx.beginPath();
-      ctx.moveTo(x, pad.t);
-      ctx.lineTo(x, pad.t + plotH);
-      ctx.stroke();
-      const label = formatClock(t);
-      const tw = ctx.measureText(label).width;
-      ctx.fillText(label, Math.min(w - pad.r - tw, Math.max(pad.l, x - tw / 2)), h - 14);
-    }
-    ctx.fillStyle = "rgba(238,247,240,0.35)";
-    ctx.fillText("time →", pad.l, h - 14);
-
-    CHART_SERIES.forEach((series) => {
-      ctx.beginPath();
-      ctx.strokeStyle = series.color;
-      ctx.lineWidth = series.dash ? 1.25 : 2;
-      ctx.setLineDash(series.dash ? [5, 4] : []);
-      let started = false;
-      history.forEach((pt) => {
-        const raw = pt[series.key];
-        if (raw == null || Number.isNaN(+raw)) {
-          started = false;
-          return;
-        }
-        const x = xOf(pt.t);
-        const y = series.axis === "fan" ? yFan(+raw) : yVpd(+raw);
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
-        }
+    const drawPanel = (axis, title, top, maxValue, ticks) => {
+      const bottom = top + panelH;
+      ctx.fillStyle = "rgba(238,247,240,0.7)";
+      ctx.font = "600 12px Outfit, sans-serif";
+      ctx.fillText(title, plotLeft, top - 7);
+      ctx.font = "11px JetBrains Mono, monospace";
+      ctx.lineWidth = 1;
+      ticks.forEach((value) => {
+        const y = bottom - (value / maxValue) * panelH;
+        ctx.strokeStyle = "rgba(238,247,240,0.1)";
+        ctx.beginPath(); ctx.moveTo(plotLeft, y); ctx.lineTo(plotRight, y); ctx.stroke();
+        ctx.fillStyle = "rgba(238,247,240,0.48)";
+        ctx.fillText(axis === "fan" ? `${value}%` : value.toFixed(1), 5, y + 4);
       });
-      ctx.stroke();
-    });
+      const seriesSet = CHART_SERIES.filter((series) => series.axis === axis && state.chartVisible[series.key]);
+      seriesSet.forEach((series) => {
+        ctx.beginPath();
+        ctx.strokeStyle = series.color;
+        ctx.lineWidth = series.dash ? 1.4 : 2;
+        ctx.setLineDash(series.dash ? [5, 4] : []);
+        let started = false;
+        visible.forEach((point) => {
+          const raw = point[series.key];
+          if (raw == null || Number.isNaN(Number(raw))) { started = false; return; }
+          const x = xOf(Number(point.t));
+          const y = bottom - (Math.max(0, Math.min(maxValue, Number(raw))) / maxValue) * panelH;
+          if (!started) { ctx.moveTo(x, y); started = true; }
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+      });
+      ctx.setLineDash([]);
+      return bottom;
+    };
+
+    const fanBottom = drawPanel("fan", "Fan speed · %", pad.t, 100, [0, 25, 50, 75, 100]);
+    const vpdTop = fanBottom + gap;
+    const vpdBottom = drawPanel("vpd", "VPD · kPa", vpdTop, 2.5, [0, 0.5, 1, 1.5, 2, 2.5]);
+    const tickCount = Math.min(6, Math.max(2, Math.floor(plotW / 110)));
+    ctx.font = "10px JetBrains Mono, monospace";
+    for (let i = 0; i <= tickCount; i++) {
+      const t = start + (rangeSeconds * i) / tickCount;
+      const x = xOf(t);
+      ctx.strokeStyle = "rgba(238,247,240,0.07)";
+      ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, vpdBottom); ctx.stroke();
+      const label = formatAxisTime(t);
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = "rgba(238,247,240,0.55)";
+      ctx.fillText(label, Math.min(plotRight - tw, Math.max(plotLeft, x - tw / 2)), h - 8);
+    }
+    const first = visible.length ? formatAxisTime(visible[0].t) : "—";
+    const last = visible.length ? formatAxisTime(visible[visible.length - 1].t) : "—";
+    const summary = $("chartSummary");
+    if (summary) summary.textContent = visible.length ? `${first} – ${last} · ${visible.length.toLocaleString()} samples · ${history.length.toLocaleString()} retained` : "No samples in this time window · history is retained for 2 days";
     ctx.setLineDash([]);
+  }
+
+  function mergeHistory(points) {
+    const incoming = (points || []).filter((point) => point && Number.isFinite(Number(point.t)));
+    if (!incoming.length) return;
+    const first = Number(incoming[0].t);
+    const last = state.history.length ? Number(state.history[state.history.length - 1].t) : -Infinity;
+    if (!state.history.length || first < Number(state.history[0].t)) {
+      const byTime = new Map(state.history.map((point) => [Number(point.t), point]));
+      incoming.forEach((point) => byTime.set(Number(point.t), point));
+      state.history = Array.from(byTime.values()).sort((a, b) => Number(a.t) - Number(b.t));
+    } else {
+      state.history.push(...incoming.filter((point) => Number(point.t) > last));
+    }
+    const cutoff = Date.now() / 1000 - 48 * 3600;
+    const firstRetained = state.history.findIndex((point) => Number(point.t) >= cutoff);
+    if (firstRetained > 0) state.history.splice(0, firstRetained);
+  }
+
+  async function loadChartHistory() {
+    const result = await api("/api/control/history");
+    mergeHistory(result.history || []);
+    state.chartLoaded = true;
+    drawChart(state.history);
   }
 
   function switchTab(name) {
@@ -909,7 +1062,10 @@
       panel.classList.toggle("active", on);
       panel.hidden = !on;
     });
-    if (name === "chart") drawChart(state.history);
+    if (name === "chart") {
+      drawChart(state.history);
+      if (!state.chartLoaded) loadChartHistory().catch((err) => console.error(err));
+    }
   }
 
   async function refreshStatus() {
@@ -1228,6 +1384,28 @@
   document.querySelectorAll(".tab").forEach((btn) => {
     btn.addEventListener("click", () => switchTab(btn.dataset.tab));
   });
+  $("checkBuild")?.addEventListener("click", () => checkBuildVersion(true));
+
+  document.querySelectorAll("[data-chart-range]").forEach((button) => button.addEventListener("click", () => {
+    state.chartHours = Number(button.dataset.chartRange);
+    state.chartOffsetHours = 0;
+    drawChart(state.history);
+  }));
+  $("chartZoomIn")?.addEventListener("click", () => {
+    const previous = state.chartHours;
+    state.chartHours = Math.max(0.0833, previous / 2);
+    state.chartOffsetHours = Math.max(0, state.chartOffsetHours + (state.chartHours - previous) / 2);
+    drawChart(state.history);
+  });
+  $("chartZoomOut")?.addEventListener("click", () => {
+    const previous = state.chartHours;
+    state.chartHours = Math.min(48, previous * 2);
+    state.chartOffsetHours = Math.max(0, state.chartOffsetHours + (state.chartHours - previous) / 2);
+    drawChart(state.history);
+  });
+  $("chartOlder")?.addEventListener("click", () => { state.chartOffsetHours += state.chartHours * 0.8; drawChart(state.history); });
+  $("chartNewer")?.addEventListener("click", () => { state.chartOffsetHours = Math.max(0, state.chartOffsetHours - state.chartHours * 0.8); drawChart(state.history); });
+  $("chartLatest")?.addEventListener("click", () => { state.chartOffsetHours = 0; drawChart(state.history); });
 
   window.addEventListener("resize", () => drawChart(state.history));
 
@@ -1236,6 +1414,8 @@
       const meta = await api("/api/meta");
       if (meta.device_url) $("deviceUrl").textContent = meta.device_url;
     } catch (_) {}
+    checkBuildVersion();
+    setInterval(() => checkBuildVersion(), 15 * 60 * 1000);
     await refreshStatus();
     await loadSettings();
     setInterval(refreshStatus, 2500);

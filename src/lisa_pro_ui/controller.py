@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import json
 import threading
 import time
 from collections import deque
 from copy import deepcopy
 from datetime import datetime, time as datetime_time
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 from lisa_pro_ui.client import LisaProClient, LisaProError
@@ -17,7 +19,9 @@ from lisa_pro_ui.vpd import dew_point_c, vpd_from_dew_point_kpa, vpd_kpa
 
 log = logging.getLogger(__name__)
 
-HISTORY_MAX = 720  # ~1h at 5s
+HISTORY_RETENTION_S = 2 * 24 * 60 * 60
+HISTORY_MAX = HISTORY_RETENTION_S // 2  # Supports the 2s minimum controller interval.
+HISTORY_SNAPSHOT_LIMIT = 360
 TEMPERATURE_RESPONSE_HOLD_S = 90.0
 TEMPERATURE_LED_REDUCTION_FACTOR = 0.5
 TEMPERATURE_LED_MIN_PCT = 20.0
@@ -37,11 +41,13 @@ class FanPidController:
         *,
         device_url: str,
         store: ConfigStore,
+        history_path: Optional[Path] = None,
         client_factory: Optional[Callable[[], LisaProClient]] = None,
         phase_write_lock: Optional[threading.RLock] = None,
     ) -> None:
         self.device_url = device_url.rstrip("/")
         self.store = store
+        self._history_path = Path(history_path) if history_path is not None else None
         self._client_factory = client_factory or (lambda: LisaProClient(self.device_url))
         self._phase_write_lock = phase_write_lock or threading.RLock()
         self._lock = threading.RLock()
@@ -49,6 +55,8 @@ class FanPidController:
         self._thread: Optional[threading.Thread] = None
         self._pid = PIDController(output_min=-100.0, output_max=100.0)
         self._history: deque[dict[str, Any]] = deque(maxlen=HISTORY_MAX)
+        self._last_history_prune = 0.0
+        self._load_history()
         self._state: dict[str, Any] = {
             "running": False,
             "enabled": False,
@@ -116,12 +124,14 @@ class FanPidController:
             return {
                 "state": deepcopy(self._state),
                 "config": self.store.get(),
-                "history": list(self._history),
+                "history": list(self._history)[-HISTORY_SNAPSHOT_LIMIT:],
             }
 
-    def history(self, *, limit: int = 360) -> list[dict[str, Any]]:
+    def history(self, *, limit: int = 0) -> list[dict[str, Any]]:
         with self._lock:
             items = list(self._history)
+        cutoff = time.time() - HISTORY_RETENTION_S
+        items = [item for item in items if float(item.get("t", 0)) >= cutoff]
         if limit > 0:
             return items[-limit:]
         return items
@@ -364,7 +374,7 @@ class FanPidController:
             if soft_temperature_hot:
                 temperature_error = temperature_inside - soft_max
             temperature_weight = max(
-                0.0, min(20.0, float(pid_cfg.get("temperature_weight_pct_per_c", 2.0)))
+                0.0, min(20.0, float(pid_cfg.get("temperature_weight_pct_per_c", 15.0)))
             )
             temperature_adjustment = temperature_error * temperature_weight
             desired = max(fan_min, min(fan_max, desired + temperature_adjustment))
@@ -603,8 +613,10 @@ class FanPidController:
         return FanPidController._safe_float(values.get("max_temp_c"))
 
     @staticmethod
-    def _temperature_soft_limits(cfg: dict[str, Any], phase_id: int) -> Optional[dict[str, float]]:
+    def _temperature_soft_limits(cfg: dict[str, Any], phase_id: int) -> Optional[dict[str, Any]]:
         values = (cfg.get("temperature_soft_limits") or {}).get(str(phase_id)) or {}
+        if not bool(values.get("enabled", True)):
+            return None
         limits = {
             key: value
             for key in ("min_temp_c", "max_temp_c")
@@ -731,22 +743,65 @@ class FanPidController:
 
     def _append_history(self, now: float) -> None:
         s = self._state
-        self._history.append(
-            {
-                "t": now,
-                "fan_actual": s.get("fan_actual"),
-                "fan_command": s.get("fan_command"),
-                "fan_min_limit": s.get("fan_min_limit"),
-                "fan_max_limit": s.get("fan_max_limit"),
-                "vpd_inside": s.get("vpd_inside"),
-                "vpd_outside": s.get("vpd_outside"),
-                "vpd_target": s.get("vpd_target"),
-                "pid_error": s.get("pid_error"),
-                "throttling": s.get("throttling"),
-                "reason": s.get("reason"),
-                "mode": s.get("mode"),
-            }
-        )
+        point = {
+            "t": now,
+            "fan_actual": s.get("fan_actual"),
+            "fan_command": s.get("fan_command"),
+            "fan_min_limit": s.get("fan_min_limit"),
+            "fan_max_limit": s.get("fan_max_limit"),
+            "vpd_inside": s.get("vpd_inside"),
+            "vpd_outside": s.get("vpd_outside"),
+            "vpd_target": s.get("vpd_target"),
+            "pid_error": s.get("pid_error"),
+            "throttling": s.get("throttling"),
+            "reason": s.get("reason"),
+            "mode": s.get("mode"),
+        }
+        self._history.append(point)
+        if self._history_path is None:
+            return
+        try:
+            self._history_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._history_path.open("a", encoding="utf-8") as history_file:
+                history_file.write(json.dumps(point, separators=(",", ":")) + "\n")
+            if now - self._last_history_prune >= 3600:
+                if self._history and float(self._history[0].get("t", now)) < now - HISTORY_RETENTION_S:
+                    self._prune_history_file(now)
+                else:
+                    self._last_history_prune = now
+        except OSError:
+            log.exception("Unable to persist controller history")
+
+    def _load_history(self) -> None:
+        if self._history_path is None or not self._history_path.exists():
+            return
+        cutoff = time.time() - HISTORY_RETENTION_S
+        try:
+            retained = []
+            with self._history_path.open("r", encoding="utf-8") as history_file:
+                for line in history_file:
+                    try:
+                        point = json.loads(line)
+                        if isinstance(point, dict) and float(point.get("t", 0)) >= cutoff:
+                            retained.append(point)
+                    except (TypeError, ValueError, json.JSONDecodeError):
+                        continue
+            self._history.extend(retained[-HISTORY_MAX:])
+            self._prune_history_file(time.time(), points=list(self._history))
+        except OSError:
+            log.exception("Unable to load controller history")
+
+    def _prune_history_file(self, now: float, *, points: Optional[list[dict[str, Any]]] = None) -> None:
+        if self._history_path is None:
+            return
+        cutoff = now - HISTORY_RETENTION_S
+        retained = [p for p in (points if points is not None else list(self._history)) if float(p.get("t", 0)) >= cutoff]
+        temporary = self._history_path.with_suffix(self._history_path.suffix + ".tmp")
+        with temporary.open("w", encoding="utf-8") as history_file:
+            for point in retained:
+                history_file.write(json.dumps(point, separators=(",", ":")) + "\n")
+        temporary.replace(self._history_path)
+        self._last_history_prune = now
 
     @staticmethod
     def _resolve_mode(

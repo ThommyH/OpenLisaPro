@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import atexit
+import json
 import os
 import threading
+import time
 from copy import deepcopy
+from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 from flask import Flask, jsonify, render_template, request
 
@@ -34,10 +38,15 @@ def create_app(
     store = ConfigStore(data_path / "control.json")
     phase_write_lock = threading.RLock()
     controller = FanPidController(
-        device_url=app.config["DEVICE_URL"], store=store, phase_write_lock=phase_write_lock
+        device_url=app.config["DEVICE_URL"],
+        store=store,
+        history_path=data_path / "controller-history.jsonl",
+        phase_write_lock=phase_write_lock,
     )
     app.config["CONTROL_STORE"] = store
     app.config["FAN_CONTROLLER"] = controller
+    update_cache = {"checked_at": 0.0, "latest_commit": None, "error": None}
+    update_cache_lock = threading.Lock()
 
     def client() -> LisaProClient:
         return LisaProClient(app.config["DEVICE_URL"])
@@ -49,6 +58,48 @@ def create_app(
     @app.get("/api/meta")
     def meta():
         return jsonify({"device_url": app.config["DEVICE_URL"]})
+
+    @app.get("/api/version")
+    def version_status():
+        try:
+            current_version = package_version("lisa-pro-ui")
+        except PackageNotFoundError:
+            current_version = "development"
+        current_commit = os.environ.get("APP_GIT_COMMIT", os.environ.get("GIT_COMMIT", "unknown"))
+        force = request.args.get("refresh") == "1"
+        now = time.time()
+        if force or now - update_cache["checked_at"] >= 300:
+            with update_cache_lock:
+                now = time.time()
+                if force or now - update_cache["checked_at"] >= 300:
+                    try:
+                        req = Request(
+                            "https://api.github.com/repos/ThommyH/OpenLisaPro/commits/main",
+                            headers={"Accept": "application/vnd.github+json", "User-Agent": "OpenLisaPro"},
+                        )
+                        with urlopen(req, timeout=4) as response:
+                            payload = json.loads(response.read().decode("utf-8"))
+                        update_cache.update(
+                            checked_at=now,
+                            latest_commit=str(payload["sha"]),
+                            error=None,
+                        )
+                    except Exception as exc:  # noqa: BLE001 — remote check must not affect control
+                        update_cache.update(checked_at=now, latest_commit=None, error=str(exc))
+        latest_commit = update_cache["latest_commit"]
+        build_commit = current_commit.strip().lower()
+        is_latest = bool(latest_commit and build_commit != "unknown" and build_commit == latest_commit.lower())
+        return jsonify(
+            {
+                "version": current_version,
+                "current_commit": current_commit,
+                "latest_commit": latest_commit,
+                "is_latest": is_latest,
+                "checked_at": update_cache["checked_at"],
+                "error": update_cache["error"],
+                "latest_url": f"https://github.com/ThommyH/OpenLisaPro/commit/{latest_commit}" if latest_commit else "https://github.com/ThommyH/OpenLisaPro/commits/main",
+            }
+        )
 
     def _ok(data):
         return jsonify(data if data is not None else {"ok": True})
@@ -67,8 +118,8 @@ def create_app(
 
     @app.get("/api/control/history")
     def control_history():
-        limit = request.args.get("limit", default=360, type=int)
-        return jsonify({"history": controller.history(limit=limit or 360)})
+        limit = request.args.get("limit", default=0, type=int)
+        return jsonify({"history": controller.history(limit=max(0, limit))})
 
     @app.post("/api/proxy/silent/toggle")
     def proxy_toggle_silent():

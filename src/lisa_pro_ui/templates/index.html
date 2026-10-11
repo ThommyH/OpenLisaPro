@@ -24,11 +24,21 @@
         <p class="eyebrow">Open growbox control</p>
         <h1 class="brand">Open<span>LisaPro</span></h1>
       </div>
-      <div class="link-status" id="linkStatus">
-        <span class="pulse-dot" id="linkDot"></span>
-        <div>
-          <strong id="linkLabel">Connecting…</strong>
-          <small id="deviceUrl">{{ device_url }}</small>
+      <div class="topbar-right">
+        <div class="link-status" id="linkStatus">
+          <span class="pulse-dot" id="linkDot"></span>
+          <div>
+            <strong id="linkLabel">Connecting…</strong>
+            <small id="deviceUrl">{{ device_url }}</small>
+          </div>
+        </div>
+        <div class="build-status" id="buildStatus" data-state="checking">
+          <span class="build-dot" aria-hidden="true"></span>
+          <div class="build-copy">
+            <a id="buildLabel" href="https://github.com/ThommyH/OpenLisaPro/commits/main" target="_blank" rel="noreferrer">Checking GitHub…</a>
+            <small id="buildDetail">Current build</small>
+          </div>
+          <button type="button" class="build-refresh" id="checkBuild" aria-label="Check GitHub for a newer build" title="Check GitHub now">↻</button>
         </div>
       </div>
     </header>
@@ -236,6 +246,11 @@
               <div><strong>Send command to the growbox</strong><span>Write the command as fan_min = fan_max. The measured fan speed may take time to catch up.</span><span id="flowCommandValue" class="flow-live-value">Current command: —</span></div>
             </div>
           </div>
+          <details class="flow-event-details">
+            <summary>Recent flow changes</summary>
+            <p class="flow-event-hint">Select an event to highlight the path the controller took. The log keeps the 20 most recent changes while this page is open.</p>
+            <div id="flowEventList" class="flow-event-list" aria-live="polite"></div>
+          </details>
         </details>
 
         <details class="fan-flow-details state-help-details">
@@ -308,14 +323,29 @@
 
       <section class="tab-panel" id="tab-chart" role="tabpanel" hidden>
         <div class="chart-wrap">
-          <div class="phases-head compact">
+          <div class="chart-header">
             <div>
               <h3 class="section-title sm">Control history</h3>
-              <p class="hero-sub phases-sub">Fan command vs limits, and VPD inside / outside / target.</p>
+              <p class="hero-sub phases-sub" id="chartSummary">Recent fan and climate readings · up to 2 days</p>
             </div>
-            <div class="legend" id="chartLegend"></div>
+            <div class="chart-ranges" role="group" aria-label="Chart time range">
+              <button type="button" class="chart-control" data-chart-range="1">1h</button>
+              <button type="button" class="chart-control" data-chart-range="6">6h</button>
+              <button type="button" class="chart-control" data-chart-range="24">24h</button>
+              <button type="button" class="chart-control" data-chart-range="48">48h</button>
+            </div>
           </div>
-          <canvas id="pidChart" width="960" height="360" aria-label="PID history chart"></canvas>
+          <div class="chart-toolbar">
+            <div class="chart-series" id="chartSeries" aria-label="Show or hide chart lines"></div>
+            <div class="chart-navigation" role="group" aria-label="Zoom and move through chart history">
+              <button type="button" class="chart-control" id="chartOlder" aria-label="Show older history">← Older</button>
+              <button type="button" class="chart-control" id="chartZoomOut" aria-label="Zoom out">−</button>
+              <button type="button" class="chart-control" id="chartZoomIn" aria-label="Zoom in">+</button>
+              <button type="button" class="chart-control" id="chartNewer" aria-label="Show newer history">Newer →</button>
+              <button type="button" class="chart-control" id="chartLatest">Latest</button>
+            </div>
+          </div>
+          <canvas id="pidChart" width="960" height="520" aria-label="Fan speed and VPD history with separate scales"></canvas>
         </div>
       </section>
 

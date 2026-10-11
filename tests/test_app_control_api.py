@@ -4,6 +4,32 @@ from pathlib import Path
 from lisa_pro_ui.app import create_app
 
 
+def test_version_endpoint_compares_current_build_with_latest_main_commit(tmp_path, monkeypatch):
+    commit = "a" * 40
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def read(self):
+            return json.dumps({"sha": commit}).encode()
+
+    monkeypatch.setenv("APP_GIT_COMMIT", commit)
+    monkeypatch.setattr("lisa_pro_ui.app.urlopen", lambda request, timeout: FakeResponse())
+    app = create_app(data_dir=tmp_path, start_controller=False)
+
+    response = app.test_client().get("/api/version?refresh=1")
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["current_commit"] == commit
+    assert body["latest_commit"] == commit
+    assert body["is_latest"] is True
+
+
 def test_control_get_and_post(tmp_path: Path):
     app = create_app(data_dir=tmp_path, start_controller=False)
     client = app.test_client()
@@ -47,7 +73,7 @@ def test_control_get_and_post(tmp_path: Path):
     assert cfg["fan_limits"]["0"]["day"]["fan_max"] == 60.0
     assert cfg["led"]["0"]["day"] == 45.0
     assert cfg["temperature_limits"]["0"]["max_temp_c"] == 29.5
-    assert cfg["temperature_soft_limits"]["0"] == {"min_temp_c": 18.0, "max_temp_c": 26.0}
+    assert cfg["temperature_soft_limits"]["0"] == {"min_temp_c": 18.0, "max_temp_c": 26.0, "enabled": True}
 
     # Persisted on disk
     assert (tmp_path / "control.json").exists()
@@ -57,6 +83,27 @@ def test_control_get_and_post(tmp_path: Path):
     assert again["vpd_targets"]["0"]["night"]["vpd_max"] == 1.1
     assert again["temperature_limits"]["0"]["max_temp_c"] == 29.5
     assert again["temperature_soft_limits"]["0"]["max_temp_c"] == 26.0
+
+
+def test_control_history_route_returns_retained_samples(tmp_path: Path):
+    app = create_app(data_dir=tmp_path, start_controller=False)
+    controller = app.config["FAN_CONTROLLER"]
+    controller._history.append({"t": 1_800_000_000, "fan_command": 37, "vpd_inside": 1.1})
+
+    response = app.test_client().get("/api/control/history")
+
+    assert response.status_code == 200
+    assert response.get_json()["history"][0]["fan_command"] == 37
+
+
+def test_soft_temperature_limits_can_be_disabled_per_stage(tmp_path: Path):
+    app = create_app(data_dir=tmp_path, start_controller=False)
+    client = app.test_client()
+    response = client.post("/api/control", json={"temperature_soft_limits": {"0": {"enabled": False, "max_temp_c": 24}}})
+
+    assert response.status_code == 200
+    limits = response.get_json()["config"]["temperature_soft_limits"]["0"]
+    assert limits == {"enabled": False, "max_temp_c": 24.0}
 
 
 def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypatch):

@@ -23,7 +23,7 @@ DEFAULT_PID = {
     "ramp_pct_per_min": 15.0,
     "interval_s": 5.0,
     "deadband_kpa": 0.03,
-    "temperature_weight_pct_per_c": 2.0,
+    "temperature_weight_pct_per_c": 15.0,
     "unreachable_error_kpa": 0.08,
     "unreachable_hold_s": 90.0,
     "throttle_step_pct": 3.0,
@@ -35,7 +35,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "vpd_targets": {},  # phase_id -> mode -> {vpd_min, vpd_max}
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
     "temperature_limits": {},  # phase_id -> hard {max_temp_c}
-    "temperature_soft_limits": {},  # phase_id -> optional {min_temp_c, max_temp_c}
+    "temperature_soft_limits": {},  # phase_id -> {enabled, min_temp_c?, max_temp_c?}
     "temperature_led_override": None,  # temporary controller LED reduction, restored after cooling
     "led": {},  # phase_id -> mode -> percent
     "pid": dict(DEFAULT_PID),
@@ -258,7 +258,7 @@ class ConfigStore:
         for phase_id, values in raw.items():
             if not isinstance(values, dict):
                 continue
-            bucket: dict[str, float] = {}
+            bucket: dict[str, Any] = {}
             for field in ("min_temp_c", "max_temp_c"):
                 value = values.get(field)
                 if value in (None, ""):
@@ -266,7 +266,8 @@ class ConfigStore:
                 bucket[field] = max(5.0, min(50.0, float(value)))
             if "min_temp_c" in bucket and "max_temp_c" in bucket and bucket["min_temp_c"] > bucket["max_temp_c"]:
                 bucket["min_temp_c"], bucket["max_temp_c"] = bucket["max_temp_c"], bucket["min_temp_c"]
-            if bucket:
+            if bucket or "enabled" in values:
+                bucket["enabled"] = bool(values.get("enabled", True))
                 out[str(phase_id)] = bucket
         return out
 
