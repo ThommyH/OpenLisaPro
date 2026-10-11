@@ -199,7 +199,7 @@
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-decision" data-flow-step="temperature-check"><strong>Is inside temperature above this stage’s maximum?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome" data-flow-branch="temperature-active"><b>Yes · Temperature protection</b><span>Command maximum fan speed. If outside temperature is at or above the limit, halve LED power immediately and show a warning. Otherwise, after 90 seconds at maximum fan speed, reduce LED power by 10 percentage points every 90 seconds. Keep at least 20% LED output and never reduce below 25% of the original setting.</span></div>
+              <div class="flow-outcome" data-flow-branch="temperature-active"><b>Yes · Temperature protection</b><span>Command maximum fan speed. If outside temperature is at or above the limit, halve the active Day or Day silent LED setting immediately and show a warning. Otherwise, after 90 seconds at maximum fan speed, reduce that mode's LED by 10 percentage points every 90 seconds. Keep at least 20% LED output and never reduce below 25% of the original setting.</span></div>
               <div class="flow-outcome" data-flow-branch="temperature-normal"><b>No</b><span>Continue with the VPD target and outside dew point estimate.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>within limit · continue with VPD control</span></div>
@@ -220,6 +220,12 @@
               <div class="flow-outcome" data-flow-branch="pid-correction"><b>No, VPD is below target</b><span>PID adds positive correction to the fan minimum, capped at the configured maximum.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>requested speed</span></div>
+            <div class="flow-decision" data-flow-step="soft-temperature-check"><strong>Is VPD in range and temperature outside its soft band?</strong></div>
+            <div class="flow-branches">
+              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Apply a small correction</b><span>Warm conditions add fan speed; cool conditions ease it toward the configured minimum. The global temperature weight controls the correction.</span></div>
+              <div class="flow-outcome" data-flow-branch="soft-temperature-hold"><b>No</b><span>Keep the VPD fan request unchanged. Soft temperature control waits until VPD is within range.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓ <span>combined request</span></div>
             <div class="flow-node" data-flow-step="apply-ramp">
               <span class="flow-index">4</span>
               <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If outside dew point makes the target unreachable, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps. The outside-air limit can trigger a back-off before the fan reaches its ceiling.</span></div>
@@ -264,7 +270,7 @@
             <div class="phases-head compact">
               <div>
                 <h3 class="section-title sm">Stage climate</h3>
-                <p class="hero-sub phases-sub">Set each stage’s light on/off times, VPD targets, fan limits, and daytime LED %. Night LED power is fixed at 0%.</p>
+                <p class="hero-sub phases-sub">Set each stage’s light schedule, VPD targets, fan limits, soft and hard temperature limits, and separate Day / Day silent LED levels. Night modes use 0% LED.</p>
               </div>
               <button type="button" class="btn ghost small" id="btnSeedFans">Seed from device</button>
             </div>
@@ -291,6 +297,9 @@
               </label>
               <label title="VPD error range treated as close enough to target. Increase to tolerate a wider VPD variation and reduce small fan adjustments; lower it to control more tightly, with a greater chance of frequent changes.">
                 Deadband <input class="mono" type="number" step="0.01" id="pidDeadband" />
+              </label>
+              <label title="Fan-speed correction for each degree outside a stage's soft temperature band. Set to zero to disable temperature correction. Hard fan limits and maximum-temperature protection still take priority.">
+                Temperature weight %/°C <input class="mono" type="number" min="0" max="20" step="0.1" id="pidTemperatureWeight" />
               </label>
             </div>
           </details>

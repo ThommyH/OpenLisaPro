@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 MODES = ("day", "day_silent", "night", "night_silent")
-LED_MODES = ("day", "night")  # UI focuses on day/night LED
+LED_MODES = ("day", "day_silent", "night", "night_silent")
 
 DEFAULT_PID = {
     "kp": 70.0,
@@ -23,6 +23,7 @@ DEFAULT_PID = {
     "ramp_pct_per_min": 15.0,
     "interval_s": 5.0,
     "deadband_kpa": 0.03,
+    "temperature_weight_pct_per_c": 2.0,
     "unreachable_error_kpa": 0.08,
     "unreachable_hold_s": 90.0,
     "throttle_step_pct": 3.0,
@@ -33,7 +34,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": True,
     "vpd_targets": {},  # phase_id -> mode -> {vpd_min, vpd_max}
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
-    "temperature_limits": {},  # phase_id -> {max_temp_c}
+    "temperature_limits": {},  # phase_id -> hard {max_temp_c}
+    "temperature_soft_limits": {},  # phase_id -> optional {min_temp_c, max_temp_c}
     "temperature_led_override": None,  # temporary controller LED reduction, restored after cooling
     "led": {},  # phase_id -> mode -> percent
     "pid": dict(DEFAULT_PID),
@@ -100,6 +102,10 @@ class ConfigStore:
                 self._data["fan_limits"] = self._normalize_fan_limits(patch["fan_limits"])
             if "temperature_limits" in patch and isinstance(patch["temperature_limits"], dict):
                 self._data["temperature_limits"] = self._normalize_temperature_limits(patch["temperature_limits"])
+            if "temperature_soft_limits" in patch and isinstance(patch["temperature_soft_limits"], dict):
+                self._data["temperature_soft_limits"] = self._normalize_temperature_soft_limits(
+                    patch["temperature_soft_limits"]
+                )
             if "temperature_led_override" in patch:
                 self._data["temperature_led_override"] = self._normalize_temperature_led_override(
                     patch["temperature_led_override"]
@@ -154,11 +160,13 @@ class ConfigStore:
                             vpd_bucket[mode] = {"vpd_min": lo, "vpd_max": hi}
                         changed = True
                     if mode in LED_MODES and mode not in led_bucket:
-                        led_bucket[mode] = (
-                            0.0
-                            if mode == "night"
-                            else float(max(0.0, min(100.0, float(m.get("led", 0)))))
-                        )
+                        if mode in ("night", "night_silent"):
+                            led_bucket[mode] = 0.0
+                        else:
+                            led_value = m.get("led")
+                            if led_value is None and mode == "day_silent":
+                                led_value = (((phase.get("settings") or {}).get("day") or {}).get("led", 0))
+                            led_bucket[mode] = float(max(0.0, min(100.0, float(led_value or 0))))
                         changed = True
             if changed:
                 self.save()
@@ -171,7 +179,7 @@ class ConfigStore:
         """Reset one stage's local overrides from its factory device phase."""
         key = str(phase_id)
         with self._lock:
-            for name in ("fan_limits", "vpd_targets", "led", "temperature_limits"):
+            for name in ("fan_limits", "vpd_targets", "led", "temperature_limits", "temperature_soft_limits"):
                 values = self._data.setdefault(name, {})
                 values.pop(key, None)
             override = self._data.get("temperature_led_override")
@@ -185,6 +193,9 @@ class ConfigStore:
         for key, default in DEFAULT_PID.items():
             if key in raw and raw[key] is not None:
                 out[key] = type(default)(raw[key])
+        out["temperature_weight_pct_per_c"] = max(
+            0.0, min(20.0, out["temperature_weight_pct_per_c"])
+        )
         # Migrate former built-in PID defaults. The old values were also the
         # shipped settings and produced a weak response to large VPD errors.
         if out["kp"] == 35.0:
@@ -204,7 +215,10 @@ class ConfigStore:
 
     @staticmethod
     def _is_flat_pid(raw: dict[str, Any]) -> bool:
-        return any(k in raw for k in ("kp", "ki", "kd", "ramp_pct_per_min", "interval_s"))
+        return any(
+            k in raw
+            for k in ("kp", "ki", "kd", "ramp_pct_per_min", "interval_s", "temperature_weight_pct_per_c")
+        )
 
     @staticmethod
     def _normalize_fan_limits(raw: dict[str, Any]) -> dict[str, Any]:
@@ -236,6 +250,24 @@ class ConfigStore:
                 continue
             max_temp = float(values["max_temp_c"])
             out[str(phase_id)] = {"max_temp_c": max(5.0, min(50.0, max_temp))}
+        return out
+
+    @staticmethod
+    def _normalize_temperature_soft_limits(raw: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for phase_id, values in raw.items():
+            if not isinstance(values, dict):
+                continue
+            bucket: dict[str, float] = {}
+            for field in ("min_temp_c", "max_temp_c"):
+                value = values.get(field)
+                if value in (None, ""):
+                    continue
+                bucket[field] = max(5.0, min(50.0, float(value)))
+            if "min_temp_c" in bucket and "max_temp_c" in bucket and bucket["min_temp_c"] > bucket["max_temp_c"]:
+                bucket["min_temp_c"], bucket["max_temp_c"] = bucket["max_temp_c"], bucket["min_temp_c"]
+            if bucket:
+                out[str(phase_id)] = bucket
         return out
 
     @staticmethod
@@ -286,7 +318,7 @@ class ConfigStore:
                 continue
             bucket: dict[str, Any] = {}
             for mode in LED_MODES:
-                if mode == "night":
+                if mode in ("night", "night_silent"):
                     bucket[mode] = 0.0
                     continue
                 if mode not in modes or modes[mode] is None:
@@ -315,11 +347,14 @@ class ConfigStore:
         out.setdefault("vpd_targets", {})
         out.setdefault("fan_limits", {})
         out.setdefault("temperature_limits", {})
+        out.setdefault("temperature_soft_limits", {})
         out.setdefault("temperature_led_override", None)
         out.setdefault("led", {})
         out.setdefault("enabled", True)
         if not isinstance(out.get("temperature_limits"), dict):
             out["temperature_limits"] = {}
+        if not isinstance(out.get("temperature_soft_limits"), dict):
+            out["temperature_soft_limits"] = {}
         out["pid"] = self._coerce_global_pid(out.get("pid") if isinstance(out.get("pid"), dict) else {})
         if isinstance(out.get("led"), dict):
             out["led"] = self._normalize_led(out["led"])
@@ -327,6 +362,10 @@ class ConfigStore:
             out["vpd_targets"] = self._normalize_vpd_targets(out["vpd_targets"])
         if isinstance(out.get("temperature_limits"), dict):
             out["temperature_limits"] = self._normalize_temperature_limits(out["temperature_limits"])
+        if isinstance(out.get("temperature_soft_limits"), dict):
+            out["temperature_soft_limits"] = self._normalize_temperature_soft_limits(
+                out["temperature_soft_limits"]
+            )
         out["temperature_led_override"] = self._normalize_temperature_led_override(
             out.get("temperature_led_override")
         )

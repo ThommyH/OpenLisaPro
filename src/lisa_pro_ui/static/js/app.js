@@ -28,7 +28,7 @@
     temperature_limited_by_outside: "High temperature · outside too warm",
   };
   const MODES = ["day", "day_silent", "night", "night_silent"];
-  const LED_MODES = ["day", "night"];
+  const LED_MODES = ["day", "day_silent", "night", "night_silent"];
 
   const CHART_SERIES = [
     { key: "fan_command", label: "Fan cmd %", color: "#b8f255", axis: "fan" },
@@ -420,12 +420,18 @@
       mark("data-flow-step", "deadband-check");
       const within = st.pid_error != null && Math.abs(Number(st.pid_error)) <= Number(st.pid_deadband_kpa ?? 0.03);
       mark("data-flow-branch", within ? "within-deadband" : "pid-correction");
+      mark("data-flow-step", "soft-temperature-check");
+      mark("data-flow-branch", st.temperature_soft_active ? "soft-temperature-adjust" : "soft-temperature-hold");
       mark("data-flow-step", "apply-ramp");
       mark("data-flow-step", "write-command");
     }
     const command = st.fan_command == null ? "—" : `${fmt0(st.fan_command)}%`;
     const target = st.fan_ramp_target == null ? null : `${fmt0(st.fan_ramp_target)}% target`;
-    $("flowCommandValue").textContent = `Current command: ${command}${st.reason === "ramping" && target ? ` → ${target} (ramping)` : ""}`;
+    const tempCorrection = Number(st.temperature_adjustment_pct || 0);
+    const tempNote = st.temperature_soft_active
+      ? ` · temperature ${tempCorrection > 0 ? "+" : ""}${fmt1(tempCorrection)}%`
+      : "";
+    $("flowCommandValue").textContent = `Current command: ${command}${st.reason === "ramping" && target ? ` → ${target} (ramping)` : ""}${tempNote}`;
   }
 
   function renderControl(snap, { forceForm = false } = {}) {
@@ -450,7 +456,8 @@
     $("pidRamp").value = pid.ramp_pct_per_min ?? "";
     $("pidInterval").value = pid.interval_s ?? "";
     $("pidDeadband").value = pid.deadband_kpa ?? "";
-    renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {}, cfg.vpd_targets || {}, cfg.temperature_limits || {});
+    $("pidTemperatureWeight").value = pid.temperature_weight_pct_per_c ?? 2;
+    renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {}, cfg.vpd_targets || {}, cfg.temperature_limits || {}, cfg.temperature_soft_limits || {});
     state.controlHydrated = true;
     state.controlDirty = false;
   }
@@ -562,7 +569,7 @@
     });
   }
 
-  function renderStageCards(phases, limits, ledMap, vpdMap, temperatureMap) {
+  function renderStageCards(phases, limits, ledMap, vpdMap, temperatureMap, softTemperatureMap) {
     const root = $("fanLimitsRoot");
     root.innerHTML = "";
     (phases || []).forEach((phase) => {
@@ -572,6 +579,7 @@
       card.dataset.phaseId = id;
       const schedule = phase.schedule || {};
       const temperature = temperatureMap[id] || {};
+      const softTemperature = softTemperatureMap[id] || {};
       const scheduleTime = (value, fallback) =>
         typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback;
       const rows = MODES.map((mode) => {
@@ -583,13 +591,13 @@
         const vpdMin = vpd.vpd_min != null ? vpd.vpd_min : device.vpd_min ?? 0.8;
         const vpdMax = vpd.vpd_max != null ? vpd.vpd_max : device.vpd_max ?? 1.2;
         const ledBlock =
-          mode === "day"
+          mode === "day" || mode === "day_silent"
             ? ledSliderHtml({
                 phaseId: id,
                 mode,
                 value: (ledMap[id] && ledMap[id][mode] != null)
                   ? ledMap[id][mode]
-                  : device.led ?? (mode === "day" ? 40 : 0),
+                  : device.led ?? (mode === "day_silent" ? ((phase.settings || {}).day || {}).led ?? 40 : 40),
                 label: "LED",
               })
             : mode === "night" || mode === "night_silent"
@@ -642,10 +650,20 @@
           <label>Lights off
             <input type="time" value="${scheduleTime(schedule.off, "00:00")}" data-schedule-phase="${id}" data-schedule-field="off" />
           </label>
-          <label>Maximum temperature
+          <label title="Hard safety limit: above this temperature, command maximum fan speed and use LED protection as configured.">Maximum temperature
             <input type="number" min="5" max="50" step="0.5" placeholder="Off" value="${temperature.max_temp_c ?? ""}" data-temperature-phase="${id}" aria-label="${phase.name || `Phase ${id}`} maximum temperature in Celsius" />
           </label>
-          <p>Day runs from lights on to lights off, including overnight schedules.</p>
+          <div class="soft-temperature-limits">
+            <strong>Soft temperature limits for this stage</strong>
+            <label>Minimum °C
+              <input type="number" min="5" max="50" step="0.5" placeholder="Off" value="${softTemperature.min_temp_c ?? ""}" data-soft-temperature-phase="${id}" data-soft-temperature-field="min_temp_c" aria-label="${phase.name || `Phase ${id}`} soft minimum temperature in Celsius" />
+            </label>
+            <label>Maximum °C
+              <input type="number" min="5" max="50" step="0.5" placeholder="Off" value="${softTemperature.max_temp_c ?? ""}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_temp_c" aria-label="${phase.name || `Phase ${id}`} soft maximum temperature in Celsius" />
+            </label>
+            <span>Adjusts fan speed only while VPD is within range.</span>
+          </div>
+          <p>The hard maximum temperature remains a separate safety override. Day runs from lights on to lights off, including overnight schedules.</p>
         </div>
         ${rows}`;
       root.appendChild(card);
@@ -740,6 +758,18 @@
     return out;
   }
 
+  function collectSoftTemperatureLimits() {
+    const out = {};
+    document.querySelectorAll("#fanLimitsRoot input[data-soft-temperature-phase]").forEach((el) => {
+      const value = el.value.trim();
+      if (value === "") return;
+      const phaseId = el.dataset.softTemperaturePhase;
+      out[phaseId] = out[phaseId] || {};
+      out[phaseId][el.dataset.softTemperatureField] = Number(value);
+    });
+    return out;
+  }
+
   function collectControlPayload() {
     return {
       enabled: $("pidEnabled").checked,
@@ -751,11 +781,13 @@
         ramp_pct_per_min: Number($("pidRamp").value),
         interval_s: Number($("pidInterval").value),
         deadband_kpa: Number($("pidDeadband").value),
+        temperature_weight_pct_per_c: Number($("pidTemperatureWeight").value),
       },
       fan_limits: collectFanLimits(),
       led: collectLed(),
       phase_schedules: collectPhaseSchedules(),
       temperature_limits: collectTemperatureLimits(),
+      temperature_soft_limits: collectSoftTemperatureLimits(),
     };
   }
 

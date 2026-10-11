@@ -102,6 +102,8 @@ def create_app(
                     led_values = {"night": 0.0, "night_silent": 0.0}
                     if "day" in modes:
                         led_values["day"] = modes["day"]
+                    if "day_silent" in modes:
+                        led_values["day_silent"] = modes["day_silent"]
                     for mode, led in led_values.items():
                         bucket = settings.setdefault(mode, {})
                         value = max(0.0, min(100.0, float(led)))

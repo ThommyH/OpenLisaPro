@@ -37,6 +37,7 @@ def test_control_get_and_post(tmp_path: Path):
             },
             "led": {"0": {"day": 45, "night": 0}},
             "temperature_limits": {"0": {"max_temp_c": 29.5}},
+            "temperature_soft_limits": {"0": {"min_temp_c": 18, "max_temp_c": 26}},
         },
     )
     assert saved.status_code == 200
@@ -46,6 +47,7 @@ def test_control_get_and_post(tmp_path: Path):
     assert cfg["fan_limits"]["0"]["day"]["fan_max"] == 60.0
     assert cfg["led"]["0"]["day"] == 45.0
     assert cfg["temperature_limits"]["0"]["max_temp_c"] == 29.5
+    assert cfg["temperature_soft_limits"]["0"] == {"min_temp_c": 18.0, "max_temp_c": 26.0}
 
     # Persisted on disk
     assert (tmp_path / "control.json").exists()
@@ -54,6 +56,7 @@ def test_control_get_and_post(tmp_path: Path):
     assert again["led"]["0"]["night"] == 0.0
     assert again["vpd_targets"]["0"]["night"]["vpd_max"] == 1.1
     assert again["temperature_limits"]["0"]["max_temp_c"] == 29.5
+    assert again["temperature_soft_limits"]["0"]["max_temp_c"] == 26.0
 
 
 def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypatch):
@@ -65,6 +68,7 @@ def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypa
                 "id": 0,
                 "settings": {
                     "day": {"led": 20},
+                    "day_silent": {"led": 30},
                     "night": {"led": 50},
                     "night_silent": {"led": 60},
                 },
@@ -88,15 +92,19 @@ def test_saving_day_led_forces_night_and_night_silent_to_zero(tmp_path, monkeypa
 
     monkeypatch.setattr(app_module, "LisaProClient", FakeClient)
     app = create_app(data_dir=tmp_path, start_controller=False)
-    response = app.test_client().post("/api/control", json={"led": {"0": {"day": 42}}})
+    response = app.test_client().post(
+        "/api/control", json={"led": {"0": {"day": 42, "day_silent": 65}}}
+    )
 
     assert response.status_code == 200
     settings = FakeClient.phases[0]["settings"]
     assert settings["day"]["led"] == 42.0
+    assert settings["day_silent"]["led"] == 65.0
     assert settings["night"]["led"] == 0.0
     assert settings["night_silent"]["led"] == 0.0
     persisted = json.loads((tmp_path / "control.json").read_text())
     assert persisted["led"]["0"]["day"] == 42.0
+    assert persisted["led"]["0"]["day_silent"] == 65.0
 
 
 def test_reset_stage_restores_factory_phase_and_keeps_other_phase(tmp_path, monkeypatch):

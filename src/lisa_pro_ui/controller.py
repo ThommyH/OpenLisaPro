@@ -63,6 +63,9 @@ class FanPidController:
             "vpd_target_raw": None,
             "temperature_active": False,
             "temperature_limit_c": None,
+            "temperature_soft_limits": None,
+            "temperature_soft_active": False,
+            "temperature_adjustment_pct": 0.0,
             "temperature_inside_c": None,
             "temperature_outside_c": None,
             "temperature_warning": None,
@@ -151,7 +154,7 @@ class FanPidController:
         phase, phase_id = self._resolve_phase(status, phases)
         mode = self._resolve_mode(status, phase)
         enabled = bool(cfg.get("enabled"))
-        led_mode = "day" if mode in ("day", "day_silent") else "night"
+        led_mode = mode if mode in ("day", "day_silent") else "night"
         saved_led_override = cfg.get("temperature_led_override")
         current_temp_key = (int(phase_id), led_mode)
         if isinstance(saved_led_override, dict):
@@ -182,6 +185,7 @@ class FanPidController:
                 self._temp_led_pct = None
                 self._last_temp_led_at = None
         temperature_limit = self._temperature_limit(cfg, phase_id)
+        temperature_soft_limits = self._temperature_soft_limits(cfg, phase_id)
         temperature_inside = self._safe_float(status.get("temp_c"))
         temperature_outside = self._safe_float(status.get("temp_out_c"))
         temperature_active = (
@@ -235,7 +239,7 @@ class FanPidController:
             outside_dew_point = dew_point_c(status.get("temp_out_c"), status.get("humi_out_rh"))
         ventilation_vpd_limit = vpd_from_dew_point_kpa(status.get("temp_c"), outside_dew_point)
 
-        vpd_min, _ = self._vpd_targets(cfg, phase_id, phase, mode)
+        vpd_min, vpd_max = self._vpd_targets(cfg, phase_id, phase, mode)
         # Prefer the lower edge of the configured VPD band, just as fan control
         # prefers its minimum; the controller raises ventilation only as needed.
         target_raw = vpd_min
@@ -275,6 +279,9 @@ class FanPidController:
                         "vpd_reachable": reachable,
                         "temperature_active": False,
                         "temperature_limit_c": temperature_limit,
+                        "temperature_soft_limits": temperature_soft_limits,
+                        "temperature_soft_active": False,
+                        "temperature_adjustment_pct": 0.0,
                         "temperature_inside_c": temperature_inside,
                         "temperature_outside_c": temperature_outside,
                         "temperature_warning": None,
@@ -315,6 +322,9 @@ class FanPidController:
                         "vpd_reachable": reachable,
                         "temperature_active": False,
                         "temperature_limit_c": temperature_limit,
+                        "temperature_soft_limits": temperature_soft_limits,
+                        "temperature_soft_active": False,
+                        "temperature_adjustment_pct": 0.0,
                         "temperature_inside_c": temperature_inside,
                         "temperature_outside_c": temperature_outside,
                         "temperature_warning": None,
@@ -335,6 +345,28 @@ class FanPidController:
         pid_out = self._pid.update(error, now, deadband=deadband)
         # Positive error (need higher VPD) → higher exhaust within [fan_min, fan_max].
         desired = self._map_pid_to_fan(pid_out, fan_min, fan_max, error, deadband=deadband)
+
+        # Low-gain proportional temperature correction only operates while
+        # inside VPD is in its configured band. Hard maximum protection below
+        # takes priority, and the adjustment stays inside the stage fan limits.
+        temperature_adjustment = 0.0
+        soft_min = (temperature_soft_limits or {}).get("min_temp_c")
+        soft_max = (temperature_soft_limits or {}).get("max_temp_c")
+        if (
+            not temperature_active
+            and temperature_inside is not None
+            and vpd_min <= float(vpd_inside) <= vpd_max
+        ):
+            temperature_error = 0.0
+            if soft_max is not None and temperature_inside > soft_max:
+                temperature_error = temperature_inside - soft_max
+            elif soft_min is not None and temperature_inside < soft_min:
+                temperature_error = temperature_inside - soft_min
+            temperature_weight = max(
+                0.0, min(20.0, float(pid_cfg.get("temperature_weight_pct_per_c", 2.0)))
+            )
+            temperature_adjustment = temperature_error * temperature_weight
+            desired = max(fan_min, min(fan_max, desired + temperature_adjustment))
 
         # Unreachable / stuck at ceiling → throttle down.
         throttling = False
@@ -447,6 +479,9 @@ class FanPidController:
                     "vpd_target_raw": round(float(target_raw), 3),
                     "temperature_active": temperature_active,
                     "temperature_limit_c": temperature_limit,
+                    "temperature_soft_limits": temperature_soft_limits,
+                    "temperature_soft_active": abs(temperature_adjustment) >= 0.01,
+                    "temperature_adjustment_pct": round(temperature_adjustment, 2),
                     "temperature_inside_c": temperature_inside,
                     "temperature_outside_c": temperature_outside,
                     "temperature_warning": self._temperature_warning(
@@ -565,6 +600,16 @@ class FanPidController:
     def _temperature_limit(cfg: dict[str, Any], phase_id: int) -> Optional[float]:
         values = (cfg.get("temperature_limits") or {}).get(str(phase_id)) or {}
         return FanPidController._safe_float(values.get("max_temp_c"))
+
+    @staticmethod
+    def _temperature_soft_limits(cfg: dict[str, Any], phase_id: int) -> Optional[dict[str, float]]:
+        values = (cfg.get("temperature_soft_limits") or {}).get(str(phase_id)) or {}
+        limits = {
+            key: value
+            for key in ("min_temp_c", "max_temp_c")
+            if (value := FanPidController._safe_float(values.get(key))) is not None
+        }
+        return limits or None
 
     @staticmethod
     def _temperature_led_base(

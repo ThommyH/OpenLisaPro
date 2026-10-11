@@ -1131,6 +1131,30 @@ input:focus {
   font-size: 0.78rem;
 }
 
+.soft-temperature-limits {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem 0.75rem;
+  padding: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--leaf) 35%, var(--line));
+  border-radius: 0.65rem;
+  background: color-mix(in srgb, var(--leaf) 5%, transparent);
+}
+
+.soft-temperature-limits > strong,
+.soft-temperature-limits > span { grid-column: 1 / -1; }
+
+.soft-temperature-limits > strong {
+  color: var(--ink);
+  font-size: 0.78rem;
+}
+
+.soft-temperature-limits > span {
+  color: var(--ink-dim);
+  font-size: 0.72rem;
+}
+
 .stage-mode-controls {
   display: grid;
   grid-template-columns: 1.1fr 1.1fr 0.7fr;
@@ -1370,6 +1394,7 @@ input:focus {
 @media (max-width: 380px) {
   main { padding-inline: 0.55rem; }
   .phase-schedule { grid-template-columns: 1fr; }
+  .soft-temperature-limits { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pid-status { grid-template-columns: 1fr 1fr; font-size: 0.78rem; }
   .section-title { font-size: clamp(1.25rem, 7vw, 1.8rem); }
   .actuators { gap: 0.55rem; }

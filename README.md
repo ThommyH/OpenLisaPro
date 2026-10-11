@@ -7,17 +7,23 @@ The web app runs on your own computer or server. It talks to the growbox over it
 ## What it does
 
 - Shows inside and outside temperature, relative humidity, dew point, and VPD, along with the current grow stage and device status.
-- Lets you manage stage-specific maximum temperatures, VPD targets, fan limits, daytime LED levels, and light-on/light-off schedules. Night and Night silent LED power is fixed at 0%.
+- Lets you manage stage-specific hard and soft temperature limits, VPD targets, fan limits, separate Day and Day silent LED levels, and light-on/light-off schedules. Night and Night silent LED power is fixed at 0%.
 - Runs a local PID controller for exhaust fan speed, enabled by default. It uses inside VPD as the control goal, estimates the ventilation limit from outside dew point at inside temperature, observes each stage's fan limits, and ramps changes to avoid abrupt speed shifts.
 - Displays the controller's current mode, status, and ramp target, with an expandable explanation of the calculation and its states.
 - Provides a chart of recent climate and fan history, and controls for growbox settings such as silent operation, door actions, and MQTT.
 - Includes `LisaProClient`, a small typed Python wrapper for the growbox API.
 
+## What OpenLisaPro adds
+
+The growbox continues to operate its own lighting, sensors, and built-in schedules. OpenLisaPro adds a local web control layer that reads the device API and can command exhaust fan settings. It stores its own per-stage VPD, fan, temperature, LED, and schedule overrides in `control.json`; these settings are separate from the growbox's factory presets.
+
+For fan control, OpenLisaPro uses inside VPD as its main goal and estimates what ventilation can achieve from outside dew point. Its optional soft temperature band adds a low-gain correction to that VPD fan request only while VPD is within its configured range. Above the soft maximum it nudges fan speed upward; below the soft minimum it nudges the request downward, bounded by that stage's fan limits. The global **Temperature weight %/°C** controls the correction (default 2 percentage points per degree; set to zero to turn it off). The separate hard maximum temperature remains a safety override and commands the configured maximum fan speed.
+
 The UI can be viewed on desktop or mobile. The PID loop is enabled for new installations and can write fan settings to the connected device. Disable it with the Control tab or set `LISA_PRO_PID_ENABLED=0` to change the default for new or reset settings.
 
 ## Screenshots
 
-These screenshots use mock device data and show the dashboard at desktop and mobile widths, including stage-specific Day silent/Night silent settings and the growbox silent schedule toggle. The example has a requested VPD target of 1.50 kPa; outside dew point limits the ventilation-achievable target to 1.25 kPa, so the fan command ramps down instead of chasing an unreachable target. The mock server does not connect to a growbox.
+These screenshots use mock device data and show the dashboard at desktop and mobile widths, including stage-specific soft temperature bounds, the global temperature correction weight, separate Day and Day silent LED controls, and the growbox silent schedule toggle. The example shows how the local fan controller combines VPD and temperature inputs while preserving the selected stage's fan limits. The mock server does not connect to a growbox.
 
 ![OpenLisaPro dashboard at desktop width](docs/screenshots/dashboard-desktop.png)
 
@@ -79,17 +85,19 @@ Open `http://<host-address>:5050` from a device that can reach the Docker host. 
 
 ## Using local fan control
 
-Open the **Control** tab to configure per-stage VPD targets and fan limits. Local PID is enabled by default for new installations. Set `LISA_PRO_PID_ENABLED=0` to make the default disabled. Existing saved control settings and the Control tab toggle take precedence. The **Chart** tab shows recent history, and the **Device** tab contains growbox settings. PID tuning settings are collapsed by default. Expand them to adjust the gains, ramp rate, update interval, and deadband.
+Open the **Control** tab to configure per-stage VPD targets, fan limits, and optional soft temperature minimum/maximum values. Local PID is enabled by default for new installations. Set `LISA_PRO_PID_ENABLED=0` to make the default disabled. Existing saved control settings and the Control tab toggle take precedence. The **Chart** tab shows recent history, and the **Device** tab contains growbox settings. PID tuning settings are collapsed by default. Expand them to adjust the gains, ramp rate, update interval, deadband, and temperature correction weight.
 
 Enable local PID control to let OpenLisaPro command the exhaust fan. The live status shows the current fan command; while it is ramping, it also shows the target speed. The configured light-on and light-off times for the active stage determine whether the controller uses day or night settings. The LEDs' current on/off state does not define the scheduled day/night mode.
 
 ### Stage temperature protection
 
-Set an optional **Maximum temperature** for each stage in the Control tab. This protection runs while local PID control is enabled. When inside temperature rises above the stage limit, the controller prioritizes cooling and commands the exhaust fan to that mode's configured maximum fan speed. VPD control resumes after temperature falls at least 0.5°C below the limit. The PID ramp default for new or reset settings is 15% per minute.
+Set optional **Soft temperature min/max** values for each stage in the Control tab. While inside VPD is within the selected stage and mode's VPD range, OpenLisaPro adds a small proportional adjustment to the VPD fan request: above the soft maximum it increases exhaust, and below the soft minimum it eases the request toward the stage's configured fan minimum. The global PID setting **Temperature weight %/°C** sets the adjustment per degree (default 2; set it to 0 to disable). Fan commands always stay within the configured stage fan limits. Soft correction waits when VPD is outside its range.
 
-Night and Night silent modes always use 0% LED power. Only the daytime LED level is configurable.
+The separate optional **Maximum temperature** is a hard safety limit. When inside temperature rises above it, the controller prioritizes cooling and commands that mode's configured maximum fan speed. VPD and soft temperature control resume after temperature falls at least 0.5°C below the hard limit. The PID ramp default for new or reset settings is 15% per minute.
 
-If outside temperature is at or above the stage limit, ventilation cannot cool the grow space below that limit. OpenLisaPro keeps the exhaust fan at its configured maximum and shows a warning. During the day it immediately halves the daytime LED setting; at night the LED is already off. If outside air is cooler than the limit, daytime LED power is reduced by 10 percentage points after the fan has been at its maximum for 90 seconds without the inside temperature returning below the limit. Further reductions are spaced by 90 seconds. In either case, output never drops below 20% or below 25% of the original setting (so no more than 75% is removed). When the inside temperature falls 0.5°C below the limit, the configured daytime LED level is restored. This temporary LED adjustment is written to the growbox phase settings and is restored by the controller after recovery or when local PID is disabled. Each stage can be reset to the same factory defaults used by **Reset defaults**, while leaving other stages unchanged. The fan calculation diagram highlights the route and command currently used by the controller.
+Each stage has separate configurable **Day** and **Day silent** LED levels in its stage card. Night and Night silent always use 0% LED power. If temperature protection reduces LED power, it temporarily adjusts the active Day or Day silent value and restores that mode's configured value after recovery.
+
+If outside temperature is at or above the stage limit, ventilation cannot cool the grow space below that limit. OpenLisaPro keeps the exhaust fan at its configured maximum and shows a warning. During a scheduled daytime mode it immediately halves that mode's LED setting; at night the LED is already off. If outside air is cooler than the limit, the active daytime mode's LED power is reduced by 10 percentage points after the fan has been at its maximum for 90 seconds without the inside temperature returning below the limit. Further reductions are spaced by 90 seconds. In either case, output never drops below 20% or below 25% of the original setting (so no more than 75% is removed). When the inside temperature falls 0.5°C below the limit, the active mode's configured LED level is restored. This temporary LED adjustment is written to the growbox phase settings and is restored by the controller after recovery or when local PID is disabled. Each stage can be reset to the same factory defaults used by **Reset defaults**, while leaving other stages unchanged. The fan calculation diagram highlights the route and command currently used by the controller.
 
 ### VPD target and outside dew point
 

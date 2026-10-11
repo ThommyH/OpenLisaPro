@@ -223,6 +223,72 @@ def test_over_temperature_commands_stage_max_fan(tmp_path):
     assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == 40
 
 
+def test_soft_temperature_high_adds_small_fan_correction_inside_vpd_band(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update(
+        {
+            "temperature_limits": {},
+            "temperature_soft_limits": {"0": {"min_temp_c": 18, "max_temp_c": 26}},
+            "vpd_targets": {"0": {"day": {"vpd_min": 0.8, "vpd_max": 1.2}}},
+            "pid": {"kp": 0, "ki": 0, "kd": 0, "temperature_weight_pct_per_c": 2},
+        }
+    )
+    TemperatureProtectionClient.status_data.update({"temp_c": 27.0, "humi_rh": 70.0})
+
+    controller._tick(controller.store.get())
+
+    state = controller.snapshot()["state"]
+    assert 0.8 <= state["vpd_inside"] <= 1.2
+    assert state["temperature_adjustment_pct"] == 2.0
+    assert state["temperature_soft_active"] is True
+    assert state["fan_ramp_target"] == 22
+
+
+def test_soft_temperature_low_reduces_request_to_configured_fan_minimum(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update(
+        {
+            "temperature_limits": {},
+            "temperature_soft_limits": {"0": {"min_temp_c": 18}},
+            "vpd_targets": {"0": {"day": {"vpd_min": 0.8, "vpd_max": 1.2}}},
+            "pid": {"kp": 0, "ki": 0, "kd": 0, "temperature_weight_pct_per_c": 2},
+        }
+    )
+    TemperatureProtectionClient.status_data.update({"temp_c": 17.0, "humi_rh": 55.0})
+
+    controller._tick(controller.store.get())
+
+    state = controller.snapshot()["state"]
+    assert 0.8 <= state["vpd_inside"] <= 1.2
+    assert state["temperature_adjustment_pct"] == -2.0
+    assert state["fan_ramp_target"] == 20
+
+
+def test_soft_temperature_waits_when_vpd_outside_band_and_respects_hard_limit(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update(
+        {
+            "temperature_limits": {},
+            "temperature_soft_limits": {"0": {"max_temp_c": 26}},
+            "vpd_targets": {"0": {"day": {"vpd_min": 0.8, "vpd_max": 1.2}}},
+            "pid": {"kp": 0, "ki": 0, "kd": 0, "temperature_weight_pct_per_c": 2},
+        }
+    )
+    TemperatureProtectionClient.status_data.update({"temp_c": 27.0, "humi_rh": 35.0})
+    controller._tick(controller.store.get())
+    state = controller.snapshot()["state"]
+    assert state["temperature_soft_active"] is False
+    assert state["temperature_adjustment_pct"] == 0.0
+
+    controller.store.update({"temperature_limits": {"0": {"max_temp_c": 25}}})
+    TemperatureProtectionClient.status_data.update({"humi_rh": 70.0})
+    controller._tick(controller.store.get())
+    state = controller.snapshot()["state"]
+    assert state["temperature_active"] is True
+    assert state["temperature_adjustment_pct"] == 0.0
+    assert state["fan_ramp_target"] == 80
+
+
 def test_hot_outside_warns_dims_led_and_restores_after_cooling(tmp_path):
     controller = make_temperature_controller(tmp_path)
     TemperatureProtectionClient.status_data["temp_out_c"] = 31.0
@@ -277,6 +343,23 @@ def test_temperature_protection_halves_led_output(tmp_path):
         controller._tick(controller.store.get())
 
         assert TemperatureProtectionClient.phase_data[0]["settings"]["day"]["led"] == initial_pct / 2
+
+
+def test_temperature_protection_dims_day_silent_led_independently(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    phase = TemperatureProtectionClient.phase_data[0]
+    phase["settings"]["day_silent"] = {"fan_min": 20, "fan_max": 80, "led": 60}
+    controller.store.update({"led": {"0": {"day": 40, "day_silent": 60}}})
+    TemperatureProtectionClient.status_data.update(
+        {"silent": {"active": True}, "temp_out_c": 31.0}
+    )
+
+    controller._tick(controller.store.get())
+
+    settings = TemperatureProtectionClient.phase_data[0]["settings"]
+    assert controller.snapshot()["state"]["mode"] == "day_silent"
+    assert settings["day"]["led"] == 40
+    assert settings["day_silent"]["led"] == 30.0
 
 
 def test_temperature_protection_never_dims_led_below_20_percent(tmp_path, monkeypatch):

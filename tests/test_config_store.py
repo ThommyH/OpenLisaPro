@@ -133,8 +133,9 @@ def test_led_normalize_and_seed(tmp_path: Path):
         ]
     )
     assert store2.get()["led"]["1"]["day"] == 35.0
+    assert store2.get()["led"]["1"]["day_silent"] == 35.0
     assert store2.get()["led"]["1"]["night"] == 0.0
-    assert "night_silent" not in store2.get()["led"]["1"]
+    assert store2.get()["led"]["1"]["night_silent"] == 0.0
     assert store2.get()["vpd_targets"]["1"]["day"]["vpd_max"] == 1.0
 
 
@@ -170,6 +171,31 @@ def test_stage_temperature_limits_normalize_and_persist(tmp_path: Path):
     assert store.get()["temperature_limits"] == {}
 
 
+def test_soft_temperature_limits_normalize_optional_bounds_and_order(tmp_path: Path):
+    store = ConfigStore(tmp_path / "c.json")
+    store.update(
+        {
+            "temperature_soft_limits": {
+                "0": {"min_temp_c": 27, "max_temp_c": 18},
+                "1": {"max_temp_c": 29},
+                "2": {"min_temp_c": 100},
+            }
+        }
+    )
+    assert store.get()["temperature_soft_limits"] == {
+        "0": {"min_temp_c": 18.0, "max_temp_c": 27.0},
+        "1": {"max_temp_c": 29.0},
+        "2": {"min_temp_c": 50.0},
+    }
+
+
+def test_temperature_weight_defaults_and_is_bounded(tmp_path: Path):
+    store = ConfigStore(tmp_path / "c.json")
+    assert store.get()["pid"]["temperature_weight_pct_per_c"] == 2.0
+    store.update({"pid": {"temperature_weight_pct_per_c": 100}})
+    assert store.get()["pid"]["temperature_weight_pct_per_c"] == 20.0
+
+
 def test_pid_default_can_be_disabled_with_environment(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("LISA_PRO_PID_ENABLED", "0")
     store = ConfigStore(tmp_path / "control.json")
@@ -186,6 +212,7 @@ def test_reset_stage_restores_factory_seeded_local_values_and_preserves_other_st
             "vpd_targets": {"0": {"day": {"vpd_min": 0.2, "vpd_max": 0.3}}, "1": {"day": {"vpd_min": 0.8, "vpd_max": 1.2}}},
             "led": {"0": {"day": 10}, "1": {"day": 60}},
             "temperature_limits": {"0": {"max_temp_c": 25}, "1": {"max_temp_c": 32}},
+            "temperature_soft_limits": {"0": {"min_temp_c": 18, "max_temp_c": 28}, "1": {"min_temp_c": 19}},
         }
     )
 
@@ -198,6 +225,8 @@ def test_reset_stage_restores_factory_seeded_local_values_and_preserves_other_st
     assert result["vpd_targets"]["0"]["day"] == {"vpd_min": 0.9, "vpd_max": 1.3}
     assert result["led"]["0"]["day"] == 55.0
     assert "0" not in result["temperature_limits"]
+    assert "0" not in result["temperature_soft_limits"]
+    assert result["temperature_soft_limits"]["1"] == {"min_temp_c": 19.0}
     assert result["fan_limits"]["1"]["day"] == {"fan_min": 15.0, "fan_max": 25.0}
     assert result["temperature_limits"]["1"]["max_temp_c"] == 32.0
 
