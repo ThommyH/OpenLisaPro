@@ -18,6 +18,9 @@ from lisa_pro_ui.vpd import dew_point_c, vpd_from_dew_point_kpa, vpd_kpa
 log = logging.getLogger(__name__)
 
 HISTORY_MAX = 720  # ~1h at 5s
+TEMPERATURE_RESPONSE_HOLD_S = 90.0
+TEMPERATURE_LED_STEP_PCT = 10.0
+TEMPERATURE_RECOVERY_MARGIN_C = 0.5
 
 PHASE_NAME_HINTS = (
     ("flower", ("flower", "blüte", "bluete", "blute", "bloom")),
@@ -54,6 +57,12 @@ class FanPidController:
             "vpd_outside": None,
             "vpd_target": None,
             "vpd_target_raw": None,
+            "temperature_active": False,
+            "temperature_limit_c": None,
+            "temperature_inside_c": None,
+            "temperature_outside_c": None,
+            "temperature_warning": None,
+            "led_override_pct": None,
             "vpd_reachable": True,
             "fan_min_limit": None,
             "fan_max_limit": None,
@@ -73,6 +82,10 @@ class FanPidController:
         self._last_throttle_at: Optional[float] = None
         self._prev_vpd: Optional[float] = None
         self._active_key: Optional[tuple[int, str]] = None
+        self._temp_fan_max_since: Optional[float] = None
+        self._last_temp_led_at: Optional[float] = None
+        self._temp_led_pct: Optional[float] = None
+        self._temp_led_key: Optional[tuple[int, str]] = None
 
     def start(self) -> None:
         with self._lock:
@@ -134,6 +147,48 @@ class FanPidController:
 
         phase, phase_id = self._resolve_phase(status, phases)
         mode = self._resolve_mode(status, phase)
+        enabled = bool(cfg.get("enabled"))
+        led_mode = "day" if mode in ("day", "day_silent") else "night"
+        saved_led_override = cfg.get("temperature_led_override")
+        if self._temp_led_key is None and isinstance(saved_led_override, dict):
+            try:
+                self._temp_led_key = (int(saved_led_override["phase_id"]), str(saved_led_override["mode"]))
+                self._temp_led_pct = float(saved_led_override["current_pct"])
+                self._last_temp_led_at = float(saved_led_override["last_at"])
+            except (KeyError, TypeError, ValueError):
+                self._temp_led_key = None
+                self._temp_led_pct = None
+                self._last_temp_led_at = None
+        temperature_limit = self._temperature_limit(cfg, phase_id)
+        temperature_inside = self._safe_float(status.get("temp_c"))
+        temperature_outside = self._safe_float(status.get("temp_out_c"))
+        temperature_active = (
+            enabled
+            and temperature_limit is not None
+            and temperature_inside is not None
+            and temperature_inside > temperature_limit
+        )
+        temperature_outside_limited = (
+            temperature_active
+            and temperature_outside is not None
+            and temperature_outside >= temperature_limit
+        )
+        current_temp_key = (int(phase_id), led_mode)
+        if self._temp_led_key is not None and self._temp_led_key != current_temp_key:
+            self._restore_temperature_led(phases, cfg)
+        if temperature_limit is None or temperature_inside is None:
+            temperature_active = False
+            self._restore_temperature_led(phases, cfg)
+            self._temp_fan_max_since = None
+            self._last_temp_led_at = None
+        if (
+            temperature_limit is not None
+            and temperature_inside is not None
+            and temperature_inside <= temperature_limit - TEMPERATURE_RECOVERY_MARGIN_C
+        ):
+            self._restore_temperature_led(phases, cfg)
+            self._temp_fan_max_since = None
+            self._last_temp_led_at = None
         pid_cfg = dict(cfg.get("pid") or {})
         if self._active_key is None or self._active_key[0] != int(phase_id):
             self._pid.reset()
@@ -171,7 +226,6 @@ class FanPidController:
         target = min(target_raw, ventilation_vpd_limit) if ventilation_vpd_limit is not None else target_raw
         reason = "tracking" if reachable else "target_limited_by_outside_dew_point"
 
-        enabled = bool(cfg.get("enabled"))
         fan_actual = status.get("fan_pct")
 
         if not enabled:
@@ -182,6 +236,9 @@ class FanPidController:
                 except Exception as exc:  # noqa: BLE001
                     log.warning("Failed to restore fan band: %s", exc)
                 self._last_sent = None
+            self._restore_temperature_led(phases, cfg)
+            self._temp_fan_max_since = None
+            self._last_temp_led_at = None
             with self._lock:
                 self._state.update(
                     {
@@ -195,6 +252,12 @@ class FanPidController:
                         "vpd_target": target,
                         "vpd_target_raw": target_raw,
                         "vpd_reachable": reachable,
+                        "temperature_active": False,
+                        "temperature_limit_c": temperature_limit,
+                        "temperature_inside_c": temperature_inside,
+                        "temperature_outside_c": temperature_outside,
+                        "temperature_warning": None,
+                        "led_override_pct": None,
                         "fan_min_limit": fan_min,
                         "fan_max_limit": fan_max,
                         "fan_command": None,
@@ -215,7 +278,7 @@ class FanPidController:
             self._pid.reset()
             return interval
 
-        if vpd_inside is None:
+        if vpd_inside is None and not temperature_active:
             with self._lock:
                 self._state.update(
                     {
@@ -229,6 +292,12 @@ class FanPidController:
                         "vpd_target": target,
                         "vpd_target_raw": target_raw,
                         "vpd_reachable": reachable,
+                        "temperature_active": False,
+                        "temperature_limit_c": temperature_limit,
+                        "temperature_inside_c": temperature_inside,
+                        "temperature_outside_c": temperature_outside,
+                        "temperature_warning": None,
+                        "led_override_pct": None,
                         "fan_min_limit": fan_min,
                         "fan_max_limit": fan_max,
                         "fan_ramp_target": None,
@@ -241,7 +310,7 @@ class FanPidController:
             return interval
 
         deadband = float(pid_cfg.get("deadband_kpa", 0.03))
-        error = target - float(vpd_inside)
+        error = target - float(vpd_inside) if vpd_inside is not None else 0.0
         pid_out = self._pid.update(error, now, deadband=deadband)
         # Positive error (need higher VPD) → higher exhaust within [fan_min, fan_max].
         desired = self._map_pid_to_fan(pid_out, fan_min, fan_max, error, deadband=deadband)
@@ -254,7 +323,7 @@ class FanPidController:
             self._prev_vpd is not None
             and ((error > 0 and float(vpd_inside) > self._prev_vpd + 0.01) or (error < 0 and float(vpd_inside) < self._prev_vpd - 0.01))
         )
-        if (not reachable or (at_ceiling and stuck and not improving)) and abs(error) > deadband:
+        if not temperature_active and (not reachable or (at_ceiling and stuck and not improving)) and abs(error) > deadband:
             if self._unreachable_since is None:
                 self._unreachable_since = now
             hold = float(pid_cfg.get("unreachable_hold_s", 90))
@@ -275,6 +344,15 @@ class FanPidController:
             self._unreachable_since = None
             self._last_throttle_at = None
 
+        if temperature_active:
+            # Heat protection takes priority over the VPD controller. Keep the
+            # configured fan ceiling and ramp toward it without VPD backoff.
+            desired = fan_max
+            throttling = False
+            reason = "temperature_limited_by_outside" if temperature_outside_limited else "over_temperature"
+            self._unreachable_since = None
+            self._last_throttle_at = None
+
         # Reset ramp anchor when phase/mode band changes.
         key = (int(phase_id), mode)
         if self._active_key != key:
@@ -290,7 +368,11 @@ class FanPidController:
             start = float(fan_actual) if fan_actual is not None else fan_min
             self._cmd_speed = max(fan_min, min(fan_max, start))
         max_step = max(0.1, ramp_per_min * (float(pid_cfg.get("interval_s", 5)) / 60.0))
-        if not throttling:
+        if temperature_active:
+            # Temperature is a safety override, so do not let the normal fan
+            # ramp delay cooling while the stage is above its configured limit.
+            self._cmd_speed = fan_max
+        elif not throttling:
             delta = desired - self._cmd_speed
             if abs(delta) <= max_step:
                 self._cmd_speed = desired
@@ -313,7 +395,23 @@ class FanPidController:
             if reason == "tracking":
                 reason = "applied"
 
-        self._prev_vpd = float(vpd_inside)
+        if temperature_active:
+            at_fan_max = (
+                (fan_actual is not None and float(fan_actual) >= fan_max - 0.5)
+                or self._cmd_speed >= fan_max - 0.5
+            )
+            if temperature_outside_limited:
+                self._reduce_temperature_led(phases, cfg, phase_id, led_mode, now=now)
+            elif at_fan_max:
+                if self._temp_fan_max_since is None:
+                    self._temp_fan_max_since = now
+                elif now - self._temp_fan_max_since >= TEMPERATURE_RESPONSE_HOLD_S:
+                    self._reduce_temperature_led(phases, cfg, phase_id, led_mode, now=now)
+            else:
+                self._temp_fan_max_since = None
+
+        if vpd_inside is not None:
+            self._prev_vpd = float(vpd_inside)
         with self._lock:
             self._state.update(
                 {
@@ -322,17 +420,29 @@ class FanPidController:
                     "mode": mode,
                     "phase_id": phase_id,
                     "phase_name": (phase or {}).get("name"),
-                    "vpd_inside": round(float(vpd_inside), 3),
+                    "vpd_inside": None if vpd_inside is None else round(float(vpd_inside), 3),
                     "vpd_outside": None if vpd_outside is None else round(float(vpd_outside), 3),
                     "vpd_target": round(float(target), 3),
                     "vpd_target_raw": round(float(target_raw), 3),
+                    "temperature_active": temperature_active,
+                    "temperature_limit_c": temperature_limit,
+                    "temperature_inside_c": temperature_inside,
+                    "temperature_outside_c": temperature_outside,
+                    "temperature_warning": self._temperature_warning(
+                        temperature_active,
+                        temperature_outside_limited,
+                        self._temp_led_pct is not None,
+                        temperature_limit,
+                        temperature_outside,
+                    ),
+                    "led_override_pct": self._temp_led_pct,
                     "vpd_reachable": reachable,
                     "fan_min_limit": fan_min,
                     "fan_max_limit": fan_max,
                     "fan_command": commanded,
                     "fan_ramp_target": round(float(desired)),
                     "fan_actual": fan_actual,
-                    "pid_error": round(error, 4),
+                    "pid_error": None if vpd_inside is None else round(error, 4),
                     "pid_integral": round(self._pid.integral, 4),
                     "pid_output": round(pid_out, 3),
                     "throttling": throttling,
@@ -399,7 +509,113 @@ class FanPidController:
 
         with self._client_factory() as client:
             client.set_phases({"phases": updated})
+        phases[:] = deepcopy(updated)
         self._last_phase_snapshot = updated
+
+    @staticmethod
+    def _safe_float(value: Any) -> Optional[float]:
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            return None
+        return number if number == number and abs(number) != float("inf") else None
+
+    @staticmethod
+    def _temperature_limit(cfg: dict[str, Any], phase_id: int) -> Optional[float]:
+        values = (cfg.get("temperature_limits") or {}).get(str(phase_id)) or {}
+        return FanPidController._safe_float(values.get("max_temp_c"))
+
+    @staticmethod
+    def _temperature_led_base(
+        cfg: dict[str, Any], phases: list[dict[str, Any]], phase_id: int, led_mode: str
+    ) -> Optional[float]:
+        configured = (cfg.get("led") or {}).get(str(phase_id)) or {}
+        value = configured.get(led_mode)
+        if value is None:
+            phase = next((p for p in phases if int(p.get("id", -1)) == int(phase_id)), None)
+            value = (((phase or {}).get("settings") or {}).get(led_mode) or {}).get("led")
+        return FanPidController._safe_float(value)
+
+    def _write_temperature_led(
+        self, phases: list[dict[str, Any]], phase_id: int, led_mode: str, pct: float
+    ) -> None:
+        updated = deepcopy(phases)
+        target = next((p for p in updated if int(p.get("id", -1)) == int(phase_id)), None)
+        if target is None:
+            return
+        settings = target.setdefault("settings", {})
+        mode_settings = settings.setdefault(led_mode, {})
+        value = max(0.0, min(100.0, float(pct)))
+        if self._safe_float(mode_settings.get("led")) == value:
+            return
+        mode_settings["led"] = value
+        with self._client_factory() as client:
+            client.set_phases({"phases": updated})
+        phases[:] = deepcopy(updated)
+        self._last_phase_snapshot = updated
+
+    def _restore_temperature_led(self, phases: list[dict[str, Any]], cfg: dict[str, Any]) -> None:
+        if self._temp_led_key is None:
+            return
+        phase_id, led_mode = self._temp_led_key
+        base = self._temperature_led_base(cfg, phases, phase_id, led_mode)
+        if base is not None:
+            self._write_temperature_led(phases, phase_id, led_mode, base)
+        self._temp_led_pct = None
+        self._temp_led_key = None
+        self.store.update({"temperature_led_override": None})
+
+    def _reduce_temperature_led(
+        self,
+        phases: list[dict[str, Any]],
+        cfg: dict[str, Any],
+        phase_id: int,
+        led_mode: str,
+        *,
+        now: float,
+    ) -> None:
+        base = self._temperature_led_base(cfg, phases, phase_id, led_mode)
+        if base is None or base <= 0:
+            return
+        if self._temp_led_key != (int(phase_id), led_mode):
+            self._temp_led_key = (int(phase_id), led_mode)
+            self._temp_led_pct = base
+        if self._temp_led_pct <= 0:
+            return
+        if self._last_temp_led_at is not None and now - self._last_temp_led_at < TEMPERATURE_RESPONSE_HOLD_S:
+            return
+        reduced = max(0.0, min(self._temp_led_pct, base) - TEMPERATURE_LED_STEP_PCT)
+        if reduced < self._temp_led_pct:
+            self._write_temperature_led(phases, phase_id, led_mode, reduced)
+            self._temp_led_pct = reduced
+            self._last_temp_led_at = now
+            self.store.update(
+                {
+                    "temperature_led_override": {
+                        "phase_id": str(phase_id),
+                        "mode": led_mode,
+                        "base_pct": base,
+                        "current_pct": reduced,
+                        "last_at": now,
+                    }
+                }
+            )
+
+    @staticmethod
+    def _temperature_warning(
+        active: bool,
+        outside_limited: bool,
+        led_reduced: bool,
+        limit: Optional[float],
+        outside: Optional[float],
+    ) -> Optional[str]:
+        if not active:
+            return None
+        if outside_limited:
+            return f"Outside air is {outside:.1f}°C, at or above the {limit:.1f}°C limit; cooling below the limit may not be possible. Fan is at maximum and LED power is reduced."
+        if led_reduced:
+            return "Fan reached its maximum and temperature stayed high; LED power is temporarily reduced."
+        return "Temperature is above the stage limit; fan is at maximum speed."
 
     def _append_history(self, now: float) -> None:
         s = self._state

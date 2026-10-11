@@ -32,6 +32,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "enabled": False,
     "vpd_targets": {},  # phase_id -> mode -> {vpd_min, vpd_max}
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
+    "temperature_limits": {},  # phase_id -> {max_temp_c}
+    "temperature_led_override": None,  # temporary controller LED reduction, restored after cooling
     "led": {},  # phase_id -> mode -> percent
     "pid": dict(DEFAULT_PID),
 }
@@ -86,6 +88,12 @@ class ConfigStore:
                 self._data["vpd_targets"] = self._normalize_vpd_targets(patch["vpd_targets"])
             if "fan_limits" in patch and isinstance(patch["fan_limits"], dict):
                 self._data["fan_limits"] = self._normalize_fan_limits(patch["fan_limits"])
+            if "temperature_limits" in patch and isinstance(patch["temperature_limits"], dict):
+                self._data["temperature_limits"] = self._normalize_temperature_limits(patch["temperature_limits"])
+            if "temperature_led_override" in patch:
+                self._data["temperature_led_override"] = self._normalize_temperature_led_override(
+                    patch["temperature_led_override"]
+                )
             if "led" in patch and isinstance(patch["led"], dict):
                 self._data["led"] = self._normalize_led(patch["led"])
             if "pid" in patch and isinstance(patch["pid"], dict):
@@ -195,6 +203,34 @@ class ConfigStore:
         return out
 
     @staticmethod
+    def _normalize_temperature_limits(raw: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for phase_id, values in raw.items():
+            if not isinstance(values, dict) or values.get("max_temp_c") in (None, ""):
+                continue
+            max_temp = float(values["max_temp_c"])
+            out[str(phase_id)] = {"max_temp_c": max(5.0, min(50.0, max_temp))}
+        return out
+
+    @staticmethod
+    def _normalize_temperature_led_override(raw: Any) -> dict[str, Any] | None:
+        if not isinstance(raw, dict) or raw.get("mode") not in LED_MODES:
+            return None
+        try:
+            base = max(0.0, min(100.0, float(raw["base_pct"])))
+            current = max(0.0, min(100.0, float(raw["current_pct"])))
+            last_at = float(raw["last_at"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return {
+            "phase_id": str(raw.get("phase_id", "")),
+            "mode": raw["mode"],
+            "base_pct": base,
+            "current_pct": current,
+            "last_at": last_at,
+        }
+
+    @staticmethod
     def _normalize_vpd_targets(raw: dict[str, Any]) -> dict[str, Any]:
         out: dict[str, Any] = {}
         for phase_id, modes in raw.items():
@@ -249,13 +285,22 @@ class ConfigStore:
 
         out.setdefault("vpd_targets", {})
         out.setdefault("fan_limits", {})
+        out.setdefault("temperature_limits", {})
+        out.setdefault("temperature_led_override", None)
         out.setdefault("led", {})
         out.setdefault("enabled", False)
+        if not isinstance(out.get("temperature_limits"), dict):
+            out["temperature_limits"] = {}
         out["pid"] = self._coerce_global_pid(out.get("pid") if isinstance(out.get("pid"), dict) else {})
         if isinstance(out.get("led"), dict):
             out["led"] = self._normalize_led(out["led"])
         if isinstance(out.get("vpd_targets"), dict):
             out["vpd_targets"] = self._normalize_vpd_targets(out["vpd_targets"])
+        if isinstance(out.get("temperature_limits"), dict):
+            out["temperature_limits"] = self._normalize_temperature_limits(out["temperature_limits"])
+        out["temperature_led_override"] = self._normalize_temperature_led_override(
+            out.get("temperature_led_override")
+        )
 
         # Migrate legacy global overwrite → seed template for empty stages
         if legacy_overwrite and legacy_overwrite.get("enabled") and not out["vpd_targets"]:

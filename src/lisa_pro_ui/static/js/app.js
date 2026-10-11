@@ -24,6 +24,8 @@
     target_limited_by_outside_dew_point: "Outside-air limited",
     throttling_unreachable: "Backing off · target unreachable",
     no_inside_vpd: "Missing inside VPD",
+    over_temperature: "High temperature · fan max",
+    temperature_limited_by_outside: "High temperature · outside too warm",
   };
   const MODES = ["day", "day_silent", "night", "night_silent"];
   const LED_MODES = ["day", "night"];
@@ -370,11 +372,14 @@
     const error = Number(st.pid_error);
     $("pidErr").textContent = st.pid_error == null ? "—" : `${error > 0 ? "+" : ""}${error.toFixed(3)} kPa`;
     $("pidReason").textContent = PID_REASON_LABELS[st.reason] || (st.reason || "—").replace(/_/g, " ");
+    const stateLabel = $("pidReason").parentElement.querySelector(".label");
+    stateLabel.textContent = st.temperature_warning ? "Temperature warning" : "State";
+    if (st.temperature_warning) $("pidReason").textContent = st.temperature_warning;
     $("pidReason").title = st.reason === "target_limited_by_outside_dew_point"
       ? "Outside air is too moist to reach the selected VPD target using ventilation alone."
       : st.reason === "throttling_unreachable"
         ? "The target is outside the estimated ventilation limit, or VPD did not improve after a fan command reached its upper limit. The controller is stepping fan speed down; it may not have reached the ceiling in the outside-air-limited case."
-        : "";
+        : st.temperature_warning || (st.temperature_active ? "The controller prioritizes cooling and commands the fan to its configured maximum. LED power may be reduced temporarily." : "");
     $("pidStatus").classList.toggle("throttling", !!st.throttling);
     $("pidStatus").classList.toggle("active", !!enabled);
     if (state.status) updateClimate(state.status, st);
@@ -402,7 +407,7 @@
     $("pidRamp").value = pid.ramp_pct_per_min ?? "";
     $("pidInterval").value = pid.interval_s ?? "";
     $("pidDeadband").value = pid.deadband_kpa ?? "";
-    renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {}, cfg.vpd_targets || {});
+    renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {}, cfg.vpd_targets || {}, cfg.temperature_limits || {});
     state.controlHydrated = true;
     state.controlDirty = false;
   }
@@ -514,7 +519,7 @@
     });
   }
 
-  function renderStageCards(phases, limits, ledMap, vpdMap) {
+  function renderStageCards(phases, limits, ledMap, vpdMap, temperatureMap) {
     const root = $("fanLimitsRoot");
     root.innerHTML = "";
     (phases || []).forEach((phase) => {
@@ -523,6 +528,7 @@
       card.className = "stage-card";
       card.dataset.phaseId = id;
       const schedule = phase.schedule || {};
+      const temperature = temperatureMap[id] || {};
       const scheduleTime = (value, fallback) =>
         typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback;
       const rows = MODES.map((mode) => {
@@ -590,6 +596,9 @@
           <label>Lights off
             <input type="time" value="${scheduleTime(schedule.off, "00:00")}" data-schedule-phase="${id}" data-schedule-field="off" />
           </label>
+          <label>Maximum temperature
+            <input type="number" min="5" max="50" step="0.5" placeholder="Off" value="${temperature.max_temp_c ?? ""}" data-temperature-phase="${id}" aria-label="${phase.name || `Phase ${id}`} maximum temperature in Celsius" />
+          </label>
           <p>Day runs from lights on to lights off, including overnight schedules.</p>
         </div>
         ${rows}`;
@@ -602,6 +611,9 @@
         if (val) val.textContent = `${Math.round(Number(input.value))}%`;
         markControlDirty();
       });
+    });
+    root.querySelectorAll("input[data-temperature-phase]").forEach((input) => {
+      input.addEventListener("input", markControlDirty);
     });
     bindDualRanges(root);
   }
@@ -650,6 +662,15 @@
     return out;
   }
 
+  function collectTemperatureLimits() {
+    const out = {};
+    document.querySelectorAll("#fanLimitsRoot input[data-temperature-phase]").forEach((el) => {
+      const value = el.value.trim();
+      if (value !== "") out[el.dataset.temperaturePhase] = { max_temp_c: Number(value) };
+    });
+    return out;
+  }
+
   function collectControlPayload() {
     return {
       enabled: $("pidEnabled").checked,
@@ -665,6 +686,7 @@
       fan_limits: collectFanLimits(),
       led: collectLed(),
       phase_schedules: collectPhaseSchedules(),
+      temperature_limits: collectTemperatureLimits(),
     };
   }
 

@@ -197,6 +197,12 @@
               <div><strong>Measure inside VPD</strong><span>Calculate from inside temperature and dew point. If dew point is missing, use device VPD, then temperature and humidity. If all are missing, leave the device setting unchanged and retry next cycle.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
+            <div class="flow-decision"><strong>Is inside temperature above this stage’s maximum?</strong></div>
+            <div class="flow-branches">
+              <div class="flow-outcome"><b>Yes · Temperature protection</b><span>Prioritize cooling and command the exhaust fan to its configured maximum. If outside temperature is at or above the limit, reduce LED power immediately and show a warning. Otherwise, reduce LED power in 10% steps if temperature remains high for 90 seconds at maximum fan speed.</span></div>
+              <div class="flow-outcome"><b>No</b><span>Continue with the VPD target and outside dew point estimate.</span></div>
+            </div>
+            <div class="flow-arrow" aria-hidden="true">↓ <span>within limit · continue with VPD control</span></div>
             <div class="flow-node">
               <span class="flow-index">3</span>
               <div><strong>Estimate the ventilation limit from outside dew point</strong><span>Evaluate outside-air moisture at the inside temperature to find the highest VPD ventilation can achieve. If outside dew point is unavailable, keep the selected target.</span></div>
@@ -237,6 +243,7 @@
               <div><dt>Outside-air limited</dt><dd>Outside air is too moist for ventilation alone to reach the selected VPD target. The controller uses the lower estimated ventilation limit.</dd></div>
               <div><dt>applied</dt><dd>A new fan command was sent to the growbox.</dd></div>
               <div><dt>ramping</dt><dd>The fan command is moving gradually toward the requested speed at the configured ramp rate.</dd></div>
+              <div><dt>High temperature</dt><dd>Temperature protection takes priority over VPD and commands the fan to its configured maximum. LED power may be reduced temporarily.</dd></div>
               <div><dt>Missing inside VPD</dt><dd>No valid inside VPD reading is available. The existing device setting is left in place while the controller retries.</dd></div>
               <div><dt>Backing off · target unreachable</dt><dd>The target is above the estimated ventilation limit, or VPD failed to improve after the fan reached its upper limit for the hold time. The controller steps the fan down; an outside-air limit can trigger this before the fan reaches its ceiling.</dd></div>
               <div><dt>error</dt><dd>A control cycle failed. The controller logs the error and retries on its next cycle.</dd></div>

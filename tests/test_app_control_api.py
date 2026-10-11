@@ -35,6 +35,7 @@ def test_control_get_and_post(tmp_path: Path):
                 }
             },
             "led": {"0": {"day": 45, "night": 0}},
+            "temperature_limits": {"0": {"max_temp_c": 29.5}},
         },
     )
     assert saved.status_code == 200
@@ -43,6 +44,7 @@ def test_control_get_and_post(tmp_path: Path):
     assert cfg["pid"]["kp"] == 42.0
     assert cfg["fan_limits"]["0"]["day"]["fan_max"] == 60.0
     assert cfg["led"]["0"]["day"] == 45.0
+    assert cfg["temperature_limits"]["0"]["max_temp_c"] == 29.5
 
     # Persisted on disk
     assert (tmp_path / "control.json").exists()
@@ -50,3 +52,4 @@ def test_control_get_and_post(tmp_path: Path):
     assert again["pid"]["kp"] == 42.0
     assert again["led"]["0"]["night"] == 0.0
     assert again["vpd_targets"]["0"]["night"]["vpd_max"] == 1.1
+    assert again["temperature_limits"]["0"]["max_temp_c"] == 29.5

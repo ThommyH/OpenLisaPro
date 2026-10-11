@@ -154,3 +154,16 @@ def test_vpd_targets_clamp_and_swap(tmp_path: Path):
     assert day == {"vpd_min": 0.5, "vpd_max": 1.5}
     assert night["vpd_min"] == 0.0
     assert night["vpd_max"] == 2.5
+
+
+def test_stage_temperature_limits_normalize_and_persist(tmp_path: Path):
+    store = ConfigStore(tmp_path / "c.json")
+    store.update({"temperature_limits": {"0": {"max_temp_c": 31.5}, "1": {"max_temp_c": 80}}})
+    config = ConfigStore(tmp_path / "c.json").get()
+    assert config["temperature_limits"] == {
+        "0": {"max_temp_c": 31.5},
+        "1": {"max_temp_c": 50.0},
+    }
+
+    store.update({"temperature_limits": {"0": {"max_temp_c": ""}}})
+    assert store.get()["temperature_limits"] == {}
