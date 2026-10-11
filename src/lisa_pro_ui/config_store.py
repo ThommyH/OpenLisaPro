@@ -35,7 +35,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "vpd_targets": {},  # phase_id -> mode -> {vpd_min, vpd_max}
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
     "temperature_limits": {},  # phase_id -> hard {max_temp_c}
-    "temperature_soft_limits": {},  # phase_id -> {enabled, min_temp_c?, max_temp_c?}
+    "temperature_soft_limits": {},  # phase_id -> {enabled, min_temp_c?, max_temp_c?, max_boost_pct?}
     "temperature_led_override": None,  # temporary controller LED reduction, restored after cooling
     "led": {},  # phase_id -> mode -> percent
     "pid": dict(DEFAULT_PID),
@@ -264,6 +264,9 @@ class ConfigStore:
                 if value in (None, ""):
                     continue
                 bucket[field] = max(5.0, min(50.0, float(value)))
+            max_boost = values.get("max_boost_pct")
+            if max_boost not in (None, ""):
+                bucket["max_boost_pct"] = max(0.0, min(100.0, float(max_boost)))
             if "min_temp_c" in bucket and "max_temp_c" in bucket and bucket["min_temp_c"] > bucket["max_temp_c"]:
                 bucket["min_temp_c"], bucket["max_temp_c"] = bucket["max_temp_c"], bucket["min_temp_c"]
             if bucket or "enabled" in values:

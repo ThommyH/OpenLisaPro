@@ -196,6 +196,22 @@ def test_soft_temperature_limits_keep_explicit_disabled_state(tmp_path: Path):
     assert store.get()["temperature_soft_limits"]["0"] == {"enabled": False, "max_temp_c": 26.0}
 
 
+def test_soft_temperature_maximum_fan_boost_is_bounded_per_stage(tmp_path: Path):
+    store = ConfigStore(tmp_path / "c.json")
+    store.update(
+        {
+            "temperature_soft_limits": {
+                "0": {"max_temp_c": 26, "max_boost_pct": 140},
+                "1": {"max_boost_pct": -5},
+            }
+        }
+    )
+
+    limits = store.get()["temperature_soft_limits"]
+    assert limits["0"]["max_boost_pct"] == 100.0
+    assert limits["1"]["max_boost_pct"] == 0.0
+
+
 def test_temperature_weight_defaults_and_is_bounded(tmp_path: Path):
     store = ConfigStore(tmp_path / "c.json")
     assert store.get()["pid"]["temperature_weight_pct_per_c"] == 15.0

@@ -40,7 +40,7 @@ The default registry (`192.168.178.69:5555`) serves plain HTTP. `make publish` u
 1. Update `version` in `pyproject.toml` and refresh `uv.lock` with `uv lock`.
 2. Update the README, specifications, and [`CHANGELOG.md`](../CHANGELOG.md) when user-visible behavior changes.
 3. Run `uv sync --group dev`, `uv run python -m pytest -q`, and `uv build`.
-4. Commit the release changes and create an annotated tag matching the version, for example `0.1.20`.
+4. Commit the release changes and create an annotated tag matching the version, for example `0.1.21`.
 5. Build and publish the Docker image after committing so `APP_GIT_COMMIT` points at the release commit: `make publish` pushes the versioned image and `latest` to the configured registry.
 6. Push the commit and tag, then publish the GitHub release with concise release notes.
 

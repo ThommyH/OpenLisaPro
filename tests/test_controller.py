@@ -292,6 +292,23 @@ def test_soft_temperature_high_adds_small_fan_correction_inside_vpd_band(tmp_pat
     assert state["fan_ramp_target"] == 22
 
 
+def test_soft_temperature_respects_per_stage_maximum_fan_boost(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update(
+        {
+            "temperature_limits": {},
+            "temperature_soft_limits": {"0": {"max_temp_c": 26, "max_boost_pct": 3}},
+            "vpd_targets": {"0": {"day": {"vpd_min": 0.8, "vpd_max": 1.2}}},
+            "pid": {"kp": 0, "ki": 0, "kd": 0, "temperature_weight_pct_per_c": 2},
+        }
+    )
+    TemperatureProtectionClient.status_data.update({"temp_c": 28.0, "humi_rh": 70.0})
+
+    controller._tick(controller.store.get())
+
+    assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 3.0
+
+
 def test_soft_temperature_low_does_not_reduce_vpd_fan_request(tmp_path):
     controller = make_temperature_controller(tmp_path)
     controller.store.update(

@@ -395,7 +395,11 @@ class FanPidController:
             temperature_c=temperature_inside,
             soft_max_c=soft_max,
             hot=soft_temperature_hot,
-            max_boost_pct=max(0.0, fan_max - desired),
+            max_available_pct=max(0.0, fan_max - desired),
+            max_stage_boost_pct=max(
+                0.0,
+                min(100.0, float((temperature_soft_limits or {}).get("max_boost_pct", 100.0))),
+            ),
             weight_pct_per_c=max(
                 0.0, min(20.0, float(pid_cfg.get("temperature_weight_pct_per_c", 15.0)))
             ),
@@ -644,7 +648,7 @@ class FanPidController:
             return None
         limits = {
             key: value
-            for key in ("min_temp_c", "max_temp_c")
+            for key in ("min_temp_c", "max_temp_c", "max_boost_pct")
             if (value := FanPidController._safe_float(values.get(key))) is not None
         }
         return limits or None
@@ -657,7 +661,8 @@ class FanPidController:
         temperature_c: Optional[float],
         soft_max_c: Optional[float],
         hot: bool,
-        max_boost_pct: float,
+        max_available_pct: float,
+        max_stage_boost_pct: float,
         weight_pct_per_c: float,
         now: float,
     ) -> float:
@@ -678,7 +683,8 @@ class FanPidController:
             self._soft_temperature_key = key
 
         target_boost = min(
-            max(0.0, float(max_boost_pct)),
+            max(0.0, float(max_available_pct)),
+            max(0.0, float(max_stage_boost_pct)),
             max(0.0, (float(temperature_c) - float(soft_max_c)) * float(weight_pct_per_c)),
         )
         if target_boost <= 0.0:

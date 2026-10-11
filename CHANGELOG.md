@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.21] - 2026-10-11
+
+### Added
+
+- Configure a maximum soft-temperature fan boost for each stage.
+
 ## [0.1.20] - 2026-10-11
 
 ### Changed
