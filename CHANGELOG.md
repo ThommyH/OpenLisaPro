@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.37] - 2026-10-24
+
+### Changed
+
+- Keep event history replication compatible with 0.1.35 primaries by backfilling their paginated SQLite measurement and flow-event APIs.
+
 ## [0.1.36] - 2026-10-24
 
 ### Added

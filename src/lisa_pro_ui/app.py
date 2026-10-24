@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import csv
+import hashlib
 import io
 import json
 import math
@@ -16,6 +17,7 @@ from copy import deepcopy
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
 from urllib.parse import urlsplit
+from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from flask import Flask, Response, jsonify, render_template, request, stream_with_context
@@ -140,6 +142,71 @@ def create_app(
         except Exception as exc:  # noqa: BLE001 — keep replica demoted; primary remains authoritative
             app.logger.error("Could not reapply primary settings to growbox after failback: %s", exc)
 
+    def sync_legacy_history(master_url: str) -> None:
+        """Backfill history from 0.1.35 primaries that predate the HA sync API."""
+        cursor_key = f"{master_url}:legacy-history"
+        baseline_measurement, baseline_event_at = telemetry.replication_cursor(cursor_key)
+        measurement_cursor, event_cursor = baseline_measurement, baseline_event_at
+
+        page = 1
+        while True:
+            req = Request(
+                f"{master_url}/api/data/measurements?page={page}&page_size=1000",
+                headers={"Accept": "application/json"},
+            )
+            try:
+                with urlopen(req, timeout=8) as response:
+                    result = json.loads(response.read().decode("utf-8"))
+            except HTTPError as exc:
+                if exc.code == 404:
+                    break  # 0.1.34 and earlier did not persist measurement history in SQLite.
+                raise
+            records = result.get("measurements", [])
+            if not records:
+                break
+            ids = [int(item["id"]) for item in records if isinstance(item, dict) and isinstance(item.get("id"), int)]
+            telemetry.import_replication_batch(master_url, {
+                "measurements": records,
+                "measurement_cursor": max(ids, default=measurement_cursor),
+                "flow_event_cursor": event_cursor,
+            }, cursor_key=cursor_key)
+            measurement_cursor = max(measurement_cursor, max(ids, default=measurement_cursor))
+            if baseline_measurement and min(ids, default=0) <= baseline_measurement:
+                break
+            if page >= int(result.get("total_pages", page)):
+                break
+            page += 1
+
+        page = 1
+        while True:
+            req = Request(
+                f"{master_url}/api/control/flow-events?page={page}",
+                headers={"Accept": "application/json"},
+            )
+            with urlopen(req, timeout=8) as response:
+                result = json.loads(response.read().decode("utf-8"))
+            events = [item for item in result.get("events", []) if isinstance(item, dict) and isinstance(item.get("at"), int)]
+            if not events:
+                break
+            wrapped = []
+            for event in events:
+                event_payload = {key: value for key, value in event.items() if key != "settings"}
+                event_id = int.from_bytes(hashlib.sha256(
+                    json.dumps(event_payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                ).digest()[:7], "big")
+                wrapped.append({"id": event_id, "event": event_payload, "settings": event.get("settings")})
+            event_cursor = max(event_cursor, max(event["at"] for event in events))
+            telemetry.import_replication_batch(master_url, {
+                "flow_events": wrapped,
+                "measurement_cursor": measurement_cursor,
+                "flow_event_cursor": event_cursor,
+            }, cursor_key=cursor_key)
+            if baseline_event_at and min(event["at"] for event in events) < baseline_event_at:
+                break
+            if page >= int(result.get("total_pages", page)):
+                break
+            page += 1
+
     def check_master():
         master_url = app.config["HA_MASTER_URL"]
         if not master_url:
@@ -157,8 +224,13 @@ def create_app(
                     f"{master_url}/api/ha/events?measurement_after={measurement_id}&flow_event_after={flow_event_id}",
                     headers={"Accept": "application/json"},
                 )
-                with urlopen(sync_req, timeout=8) as response:
-                    telemetry.import_replication_batch(master_url, json.loads(response.read().decode("utf-8")))
+                try:
+                    with urlopen(sync_req, timeout=8) as response:
+                        telemetry.import_replication_batch(master_url, json.loads(response.read().decode("utf-8")))
+                except HTTPError as exc:
+                    if exc.code != 404:
+                        raise
+                    sync_legacy_history(master_url)
                 healthy = True
                 heartbeat_body = {"node_name": app.config["HA_NODE_NAME"], "node_url": app.config["HA_NODE_URL"]}
                 heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps(heartbeat_body).encode(), headers={"Content-Type": "application/json"}, method="POST")

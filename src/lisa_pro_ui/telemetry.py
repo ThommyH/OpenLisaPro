@@ -166,7 +166,9 @@ class TelemetryStore:
             "flow_event_cursor": events[-1]["id"] if events else after_flow_event_id,
         }
 
-    def import_replication_batch(self, primary_url: str, payload: dict[str, Any]) -> None:
+    def import_replication_batch(
+        self, primary_url: str, payload: dict[str, Any], *, cursor_key: str | None = None
+    ) -> None:
         measurements = payload.get("measurements", [])
         events = payload.get("flow_events", [])
         with self._lock, self._connection() as connection:
@@ -198,7 +200,8 @@ class TelemetryStore:
             for item in events:
                 if not isinstance(item, dict) or not isinstance(item.get("id"), int) or not isinstance(item.get("event"), dict):
                     continue
-                source_key = f"{primary_url}:flow-event:{item['id']}"
+                event_hash = hashlib.sha256(_json(item["event"]).encode("utf-8")).hexdigest()
+                source_key = f"{primary_url}:flow-event:{event_hash}"
                 if connection.execute("SELECT 1 FROM flow_events WHERE source_key=?", (source_key,)).fetchone():
                     continue
                 event = item["event"]
@@ -211,7 +214,7 @@ class TelemetryStore:
                 """INSERT INTO replication_state(primary_url, measurement_id, flow_event_id) VALUES(?,?,?)
                    ON CONFLICT(primary_url) DO UPDATE SET measurement_id=MAX(measurement_id, excluded.measurement_id),
                    flow_event_id=MAX(flow_event_id, excluded.flow_event_id)""",
-                (primary_url, int(payload.get("measurement_cursor", 0)), int(payload.get("flow_event_cursor", 0))),
+                (cursor_key or primary_url, int(payload.get("measurement_cursor", 0)), int(payload.get("flow_event_cursor", 0))),
             )
 
     @staticmethod
