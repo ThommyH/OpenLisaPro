@@ -2,6 +2,14 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.32] - 2026-10-24
+
+### Changed
+
+- Show each HA node's IP in the status banner and link to the other node's UI.
+- Keep the primary's config authoritative on every replica sync and reapply it to the growbox after failback.
+- Add failback regression coverage for replica setting changes and subsequent config drift.
+
 ## [0.1.31] - 2026-10-24
 
 ### Changed

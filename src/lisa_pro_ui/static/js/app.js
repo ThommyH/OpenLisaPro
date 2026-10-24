@@ -1225,10 +1225,37 @@
       const banner = $("haBanner");
       const isReplica = ha.role === "replica";
       banner.hidden = false;
-      banner.textContent = isReplica
-        ? `REPLICA · ${ha.node_name} · Master ${ha.master_url || "not configured"} ${ha.master_healthy ? "online" : "unreachable"}`
-        : `MASTER · ${ha.node_name} · Replica ${ha.replica_healthy ? "online" : "offline"}${ha.configured_role === "replica" ? " · promoted backup" : ""}`;
       banner.dataset.role = ha.role;
+      banner.replaceChildren();
+      const addText = (value) => banner.appendChild(document.createTextNode(value));
+      const host = (value) => {
+        try {
+          const parsed = new URL(value);
+          return ["http:", "https:"].includes(parsed.protocol) ? parsed.hostname : "";
+        } catch { return ""; }
+      };
+      const addLink = (value, label, accessibleName) => {
+        const linkHost = host(value);
+        if (!linkHost) return false;
+        const link = document.createElement("a");
+        link.href = value;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = label || linkHost;
+        link.setAttribute("aria-label", accessibleName || `Open OpenLisaPro at ${linkHost}`);
+        banner.appendChild(link);
+        return true;
+      };
+      const ownHost = host(ha.node_url);
+      if (isReplica) {
+        addText(`REPLICA · ${ha.node_name} (${ownHost || "IP unavailable"}) · MASTER `);
+        if (!addLink(ha.master_url, host(ha.master_url), "Open the master OpenLisaPro UI")) addText("not configured");
+        addText(` · ${ha.master_healthy ? "online" : "unreachable"}`);
+      } else {
+        addText(`${ha.configured_role === "replica" ? "BACKUP MASTER" : "MASTER"} · ${ha.node_name} (${ownHost || "IP unavailable"}) · REPLICA `);
+        if (!addLink(ha.replica_url, host(ha.replica_url), "Open the replica OpenLisaPro UI")) addText("unknown");
+        addText(` · ${ha.replica_healthy ? "online" : "offline"}`);
+      }
       document.querySelectorAll("#tab-control .control-toolbar input, #tab-control .control-toolbar button, #manualModePanel input, #controlForm input, #controlForm select, #controlForm button, #tab-device input, #tab-device select, #tab-device button").forEach((el) => {
         if (el.dataset.haWasDisabled === undefined) el.dataset.haWasDisabled = el.disabled ? "1" : "0";
         el.disabled = isReplica || el.dataset.haWasDisabled === "1";

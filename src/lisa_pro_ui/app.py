@@ -7,11 +7,13 @@ import json
 import math
 import os
 import re
+import socket
 import threading
 import time
 from copy import deepcopy
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from flask import Flask, jsonify, render_template, request
@@ -38,6 +40,30 @@ def _release_version_key(value: object) -> tuple[tuple[int, ...], int, str] | No
     return padded_parts, int(not suffix), suffix.lower()
 
 
+def _advertised_node_url(remote_url: str) -> str:
+    """Build a LAN URL using the interface that reaches the peer/device."""
+    configured = os.environ.get("LISA_PRO_HA_PUBLIC_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+    port = int(os.environ.get("PORT", "5050"))
+    parsed = urlsplit(remote_url)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
+            probe.connect((parsed.hostname or "127.0.0.1", parsed.port or (443 if parsed.scheme == "https" else 80)))
+            address = probe.getsockname()[0]
+    except OSError:
+        address = "127.0.0.1"
+    return f"{parsed.scheme or 'http'}://{address}:{port}"
+
+
+def _valid_node_url(value: object) -> str | None:
+    url = str(value or "").strip().rstrip("/")
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
+        return None
+    return url
+
+
 def create_app(
     device_url: str | None = None,
     *,
@@ -56,6 +82,7 @@ def create_app(
     app.config["HA_ROLE"] = ha_role
     app.config["HA_NODE_NAME"] = os.environ.get("LISA_PRO_HA_NAME", "OpenLisaPro")
     app.config["HA_MASTER_URL"] = os.environ.get("LISA_PRO_HA_MASTER_URL", "").rstrip("/")
+    app.config["HA_NODE_URL"] = _advertised_node_url(app.config["HA_MASTER_URL"] or app.config["DEVICE_URL"])
     data_path = Path(data_dir or DEFAULT_DATA_DIR)
     store = ConfigStore(data_path / "control.json")
     flow_events_path = data_path / "flow-events.json"
@@ -71,7 +98,7 @@ def create_app(
     app.config["FAN_CONTROLLER"] = controller
     update_cache = {"checked_at": 0.0, "latest_version": None, "error": None}
     update_cache_lock = threading.Lock()
-    ha_state = {"role": "primary" if ha_role == "primary" else "replica", "master_url": app.config["HA_MASTER_URL"], "master_healthy": ha_role == "primary", "last_check_at": None, "replica_last_seen": None}
+    ha_state = {"role": "primary" if ha_role == "primary" else "replica", "master_url": app.config["HA_MASTER_URL"], "master_healthy": ha_role == "primary", "last_check_at": None, "replica_last_seen": None, "replica_url": None, "replica_name": None}
     ha_lock = threading.RLock()
     ha_stop = threading.Event()
     ha_thread = None
@@ -90,6 +117,21 @@ def create_app(
                 controller.start()
             else:
                 controller.stop()
+        return changed
+
+    def apply_master_config_to_device() -> None:
+        """Reapply the returned primary's settings after a promoted replica demotes."""
+        cfg = store.get()
+        try:
+            if cfg.get("manual_mode"):
+                controller._last_device_settings_sync_at = None
+                controller._tick(cfg)
+            else:
+                controller.sync_configured_settings(
+                    [], cfg, include_fan_limits=not bool(cfg.get("enabled"))
+                )
+        except Exception as exc:  # noqa: BLE001 — keep replica demoted; primary remains authoritative
+            app.logger.error("Could not reapply primary settings to growbox after failback: %s", exc)
 
     def check_master():
         master_url = app.config["HA_MASTER_URL"]
@@ -104,7 +146,8 @@ def create_app(
             if payload.get("role") == "primary" and isinstance(payload.get("config"), dict):
                 store.replace(payload["config"])
                 healthy = True
-                heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps({"node_name": app.config["HA_NODE_NAME"]}).encode(), headers={"Content-Type": "application/json"}, method="POST")
+                heartbeat_body = {"node_name": app.config["HA_NODE_NAME"], "node_url": app.config["HA_NODE_URL"]}
+                heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps(heartbeat_body).encode(), headers={"Content-Type": "application/json"}, method="POST")
                 with urlopen(heartbeat, timeout=3):
                     pass
         except Exception as exc:  # noqa: BLE001 — fail over when the master cannot be reached
@@ -113,7 +156,10 @@ def create_app(
         with ha_lock:
             ha_state["last_check_at"] = time.time()
             ha_state["master_healthy"] = healthy
-        set_ha_role("replica" if healthy else "primary")
+        previous_role = ha_snapshot()["role"]
+        changed = set_ha_role("replica" if healthy else "primary")
+        if healthy and previous_role == "primary" and changed:
+            apply_master_config_to_device()
         return healthy
 
     def monitor_master():
@@ -147,15 +193,21 @@ def create_app(
         status = ha_snapshot()
         seen = status.get("replica_last_seen")
         status["replica_healthy"] = bool(seen and time.time() - seen < 15)
-        status.update(node_name=app.config["HA_NODE_NAME"], configured_role=ha_role)
+        status.update(node_name=app.config["HA_NODE_NAME"], node_url=app.config["HA_NODE_URL"], configured_role=ha_role)
         return jsonify(status)
 
     @app.post("/api/ha/heartbeat")
     def ha_replica_heartbeat():
         if ha_role != "primary":
             return jsonify({"error": "This node is not the configured primary."}), 409
+        body = request.get_json(silent=True) or {}
         with ha_lock:
             ha_state["replica_last_seen"] = time.time()
+            if body.get("node_name"):
+                ha_state["replica_name"] = str(body["node_name"])[:100]
+            node_url = _valid_node_url(body.get("node_url"))
+            if node_url:
+                ha_state["replica_url"] = node_url
         return jsonify({"ok": True})
 
     @app.before_request
