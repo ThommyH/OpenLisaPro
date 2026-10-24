@@ -576,7 +576,7 @@
     if (!state.flowEvents.length) {
       const empty = document.createElement("p");
       empty.className = "flow-event-empty";
-      empty.textContent = "No controller flow changes in the last 14 days.";
+      empty.textContent = "No controller flow changes yet.";
       list.append(empty);
       return;
     }
@@ -1267,7 +1267,7 @@
     const first = visible.length ? formatAxisTime(visible[0].t) : "—";
     const last = visible.length ? formatAxisTime(visible[visible.length - 1].t) : "—";
     const summary = $("chartSummary");
-    if (summary) summary.textContent = visible.length ? `${first} – ${last} · ${visible.length.toLocaleString(window.i18n.locale)} ${window.t("samples")} · ${history.length.toLocaleString(window.i18n.locale)} ${window.t("retained")}` : window.t("No samples in this time window · history is retained for 2 days");
+    if (summary) summary.textContent = visible.length ? `${first} – ${last} · ${visible.length.toLocaleString(window.i18n.locale)} ${window.t("samples")} · ${history.length.toLocaleString(window.i18n.locale)} ${window.t("retained")}` : window.t("No samples in this time window · full measurement history is saved in SQLite");
     ctx.setLineDash([]);
   }
 

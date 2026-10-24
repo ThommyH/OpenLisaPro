@@ -2,6 +2,17 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.35] - 2026-10-24
+
+### Added
+
+- Store controller measurements, full device status, controller state, settings snapshots, and flow events in SQLite without automatic expiry.
+- Import existing controller and flow history JSON files once and expose full-history JSON Lines and CSV exports.
+
+### Changed
+
+- Keep the interactive chart focused on the latest 48 hours while retaining the full dataset in the SQLite database.
+
 ## [0.1.34] - 2026-10-24
 
 ### Added

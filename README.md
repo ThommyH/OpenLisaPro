@@ -2,7 +2,7 @@
 
 OpenLisaPro is a self-hosted Flask dashboard and Python client for Lisa Pro / LuminaGrowX growboxes. It displays live climate and device status, manages local control settings, and can run a VPD-based fan controller.
 
-The browser communicates with the local Flask app, which proxies requests to the growbox. Local settings are stored in `control.json`; fan and VPD samples are retained in `controller-history.jsonl` for 48 hours, and controller flow changes in `flow-events.json` for 14 days.
+The browser communicates with the local Flask app, which proxies requests to the growbox. Current local control settings remain in `control.json`. Sensor measurements, controller state, settings snapshots, and controller flow events are stored indefinitely in `openlisapro.sqlite3`. Existing `controller-history.jsonl` and `flow-events.json` data is imported once at startup and the legacy files are left untouched. The chart continues to show the latest 48 hours; the full dataset is available from `/api/data/export?format=jsonl` or `/api/data/export?format=csv`.
 
 ## Features
 
@@ -12,7 +12,8 @@ The browser communicates with the local Flask app, which proxies requests to the
 - Use complete manual mode to set fan and LED percentages directly, bypassing PID and temperature overrides.
 - Show sensor temperature and humidity to one decimal place when device readings include fractions.
 - Gradually boost fan speed above a stage's soft temperature limit until temperature starts falling, with a per-stage boost cap.
-- Review a two-day fan and VPD chart, or page through 14 days of controller flow changes.
+- Review a two-day fan and VPD chart, or page through the full controller flow history.
+- Keep a permanent SQLite telemetry dataset with raw device readings, controller state, and the settings active for each sample; export it as JSON Lines or CSV for analysis.
 - Switch the dashboard between English and German.
 - Use `LisaProClient` to access the device API from Python.
 

@@ -15,6 +15,7 @@ from typing import Any, Callable, Optional
 from lisa_pro_ui.client import LisaProClient, LisaProError
 from lisa_pro_ui.config_store import MODES, ConfigStore
 from lisa_pro_ui.pid import PIDController
+from lisa_pro_ui.telemetry import TelemetryStore
 from lisa_pro_ui.vpd import dew_point_c, vpd_from_dew_point_kpa, vpd_kpa
 
 log = logging.getLogger(__name__)
@@ -48,12 +49,14 @@ class FanPidController:
         device_url: str,
         store: ConfigStore,
         history_path: Optional[Path] = None,
+        telemetry_store: Optional[TelemetryStore] = None,
         client_factory: Optional[Callable[[], LisaProClient]] = None,
         phase_write_lock: Optional[threading.RLock] = None,
     ) -> None:
         self.device_url = device_url.rstrip("/")
         self.store = store
         self._history_path = Path(history_path) if history_path is not None else None
+        self._telemetry_store = telemetry_store
         self._client_factory = client_factory or (lambda: LisaProClient(self.device_url))
         self._phase_write_lock = phase_write_lock or threading.RLock()
         self._lock = threading.RLock()
@@ -365,7 +368,7 @@ class FanPidController:
                         "last_error": None,
                     }
                 )
-                self._append_history(now)
+                self._append_history(now, device_measurements=status)
             return interval
 
         if not enabled:
@@ -418,7 +421,7 @@ class FanPidController:
                         "last_error": None,
                     }
                 )
-                self._append_history(now)
+                self._append_history(now, device_measurements=status)
             self._cmd_speed = None
             self._active_key = None
             self._unreachable_since = None
@@ -460,7 +463,7 @@ class FanPidController:
                         "last_error": "Missing inside VPD / climate reading",
                     }
                 )
-                self._append_history(now)
+                self._append_history(now, device_measurements=status)
             return interval
 
         deadband = float(pid_cfg.get("deadband_kpa", 0.03))
@@ -642,7 +645,7 @@ class FanPidController:
                     "last_error": None,
                 }
             )
-            self._append_history(now)
+            self._append_history(now, device_measurements=status)
         return interval
 
     @staticmethod
@@ -1050,7 +1053,7 @@ class FanPidController:
             return "Fan reached its maximum and temperature stayed high; LED power is temporarily reduced."
         return "Temperature is above the stage limit; fan is at maximum speed."
 
-    def _append_history(self, now: float) -> None:
+    def _append_history(self, now: float, *, device_measurements: Optional[dict[str, Any]] = None) -> None:
         s = self._state
         point = {
             "t": now,
@@ -1067,6 +1070,18 @@ class FanPidController:
             "mode": s.get("mode"),
         }
         self._history.append(point)
+        if self._telemetry_store is not None:
+            try:
+                self._telemetry_store.record_measurement(
+                    sampled_at=now,
+                    device=device_measurements or {},
+                    controller=deepcopy(s),
+                    chart=point,
+                    settings=self.store.get(),
+                )
+            except Exception:  # noqa: BLE001 — a storage failure must not stop hardware control
+                log.exception("Unable to persist telemetry measurement")
+            return
         if self._history_path is None:
             return
         try:
@@ -1082,6 +1097,17 @@ class FanPidController:
             log.exception("Unable to persist controller history")
 
     def _load_history(self) -> None:
+        if self._telemetry_store is not None:
+            try:
+                self._history.extend(
+                    self._telemetry_store.recent_chart_history(
+                        cutoff=time.time() - HISTORY_RETENTION_S,
+                        limit=HISTORY_MAX,
+                    )
+                )
+            except Exception:  # noqa: BLE001 — retain controller availability if chart loading fails
+                log.exception("Unable to load controller history from SQLite")
+            return
         if self._history_path is None or not self._history_path.exists():
             return
         cutoff = time.time() - HISTORY_RETENTION_S

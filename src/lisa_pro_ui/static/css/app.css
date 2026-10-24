@@ -1487,6 +1487,7 @@ input:focus {
 
 .chart-header .section-title.sm { font-size: 0.95rem; }
 .chart-header .phases-sub { margin: 0.2rem 0 0; font-size: 0.78rem; }
+.chart-exports { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.45rem; }
 
 .chart-control, .chart-series-toggle {
   min-height: 1.8rem;

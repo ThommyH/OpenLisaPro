@@ -3,7 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#061a13" />
     <title>OpenLisaPro</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="mask-icon" href="{{ url_for('static', filename='favicon-mask.svg') }}" color="#b8f255" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -275,7 +278,7 @@
         </details>
         <details class="fan-flow-details flow-event-details">
             <summary>Recent flow changes</summary>
-            <p class="flow-event-hint">Changes are saved for 14 days. Select an entry to inspect its path and fan request.</p>
+            <p class="flow-event-hint">Changes and their settings snapshot are stored in the database. Select an entry to inspect its path and fan request.</p>
             <div id="flowEventList" class="flow-event-list" aria-live="polite"></div>
             <nav class="flow-event-pagination" id="flowEventPagination" aria-label="Flow change pages" hidden>
               <button type="button" class="chart-control" id="flowEventsPrevious" aria-label="Previous flow changes">← Previous</button>
@@ -357,7 +360,11 @@
           <div class="chart-header">
             <div>
               <h3 class="section-title sm">Control history</h3>
-              <p class="hero-sub phases-sub" id="chartSummary">Recent fan and climate readings · up to 2 days</p>
+              <p class="hero-sub phases-sub" id="chartSummary" data-i18n="Recent fan and climate readings · full history saved in SQLite">Recent fan and climate readings · full history saved in SQLite</p>
+              <div class="chart-exports">
+                <a class="chart-control" href="/api/data/export?format=jsonl" download data-i18n="Download JSON Lines">Download JSON Lines</a>
+                <a class="chart-control" href="/api/data/export?format=csv" download data-i18n="Download CSV">Download CSV</a>
+              </div>
             </div>
             <div class="chart-ranges" role="group" aria-label="Chart time range">
               <button type="button" class="chart-control" data-chart-range="1">1h</button>

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import atexit
+import csv
+import io
 import json
 import math
 import os
@@ -16,15 +18,15 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request, stream_with_context
 
 from lisa_pro_ui.client import DEFAULT_BASE_URL, LisaProClient, LisaProError
 from lisa_pro_ui.config_store import ConfigStore
 from lisa_pro_ui.controller import FanPidController
+from lisa_pro_ui.telemetry import TelemetryStore
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = Path(os.environ.get("LISA_PRO_DATA", PACKAGE_DIR.parent.parent / "data"))
-FLOW_EVENT_RETENTION_MS = 14 * 24 * 60 * 60 * 1000
 FLOW_EVENT_PAGE_SIZE = 20
 
 
@@ -85,17 +87,22 @@ def create_app(
     app.config["HA_NODE_URL"] = _advertised_node_url(app.config["HA_MASTER_URL"] or app.config["DEVICE_URL"])
     data_path = Path(data_dir or DEFAULT_DATA_DIR)
     store = ConfigStore(data_path / "control.json")
-    flow_events_path = data_path / "flow-events.json"
+    telemetry = TelemetryStore(data_path / "openlisapro.sqlite3")
+    telemetry.migrate_legacy_files(
+        history_path=data_path / "controller-history.jsonl",
+        flow_events_path=data_path / "flow-events.json",
+    )
     flow_events_lock = threading.RLock()
     phase_write_lock = threading.RLock()
     controller = FanPidController(
         device_url=app.config["DEVICE_URL"],
         store=store,
-        history_path=data_path / "controller-history.jsonl",
+        telemetry_store=telemetry,
         phase_write_lock=phase_write_lock,
     )
     app.config["CONTROL_STORE"] = store
     app.config["FAN_CONTROLLER"] = controller
+    app.config["TELEMETRY_STORE"] = telemetry
     update_cache = {"checked_at": 0.0, "latest_version": None, "error": None}
     update_cache_lock = threading.Lock()
     ha_state = {"role": "primary" if ha_role == "primary" else "replica", "master_url": app.config["HA_MASTER_URL"], "master_healthy": ha_role == "primary", "last_check_at": None, "replica_last_seen": None, "replica_url": None, "replica_name": None}
@@ -284,46 +291,14 @@ def create_app(
         limit = request.args.get("limit", default=0, type=int)
         return jsonify({"history": controller.history(limit=max(0, limit))})
 
-    def read_flow_events() -> list[dict]:
-        with flow_events_lock:
-            try:
-                payload = json.loads(flow_events_path.read_text(encoding="utf-8"))
-                stored = payload.get("events", []) if isinstance(payload, dict) else []
-                if not isinstance(stored, list):
-                    stored = []
-            except FileNotFoundError:
-                stored = []
-            except (OSError, json.JSONDecodeError) as exc:
-                app.logger.warning("Could not read flow event history: %s", exc)
-                stored = []
-
-            cutoff = time.time() * 1000 - FLOW_EVENT_RETENTION_MS
-            events = [
-                event for event in stored
-                if isinstance(event, dict)
-                and isinstance(event.get("at"), (int, float))
-                and cutoff <= event["at"] <= time.time() * 1000 + 300_000
-            ]
-            events.sort(key=lambda event: event["at"], reverse=True)
-            if events != stored:
-                write_flow_events(events)
-            return events
-
-    def write_flow_events(events: list[dict]) -> None:
-        flow_events_path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = flow_events_path.with_suffix(".tmp")
-        temporary.write_text(json.dumps({"schema_version": 1, "events": events}, indent=2) + "\n", encoding="utf-8")
-        temporary.replace(flow_events_path)
-
     @app.get("/api/control/flow-events")
     def control_flow_events_get():
-        events = read_flow_events()
-        total = len(events)
+        total = telemetry.flow_event_count()
         total_pages = max(1, (total + FLOW_EVENT_PAGE_SIZE - 1) // FLOW_EVENT_PAGE_SIZE)
         page = min(total_pages, max(1, request.args.get("page", default=1, type=int)))
         start = (page - 1) * FLOW_EVENT_PAGE_SIZE
         return jsonify({
-            "events": events[start:start + FLOW_EVENT_PAGE_SIZE],
+            "events": telemetry.list_flow_events(limit=FLOW_EVENT_PAGE_SIZE, offset=start),
             "page": page,
             "page_size": FLOW_EVENT_PAGE_SIZE,
             "total": total,
@@ -337,8 +312,8 @@ def create_app(
             return jsonify({"error": "A flow event object is required."}), 400
         at = body.get("at")
         now_ms = time.time() * 1000
-        if not isinstance(at, (int, float)) or isinstance(at, bool) or not math.isfinite(at) or not now_ms - FLOW_EVENT_RETENTION_MS <= at <= now_ms + 300_000:
-            return jsonify({"error": "Flow event timestamp must be within the last 14 days."}), 400
+        if not isinstance(at, (int, float)) or isinstance(at, bool) or not math.isfinite(at) or not 0 < at <= now_ms + 300_000:
+            return jsonify({"error": "Flow event timestamp must be a valid epoch in milliseconds and not in the future."}), 400
         title = str(body.get("title") or "").strip()[:200]
         signature = str(body.get("signature") or "")[:1000]
         steps = body.get("steps")
@@ -368,15 +343,101 @@ def create_app(
                     if isinstance(command_pct, (int, float)) and not isinstance(command_pct, bool) and math.isfinite(command_pct) else None,
                 }
         with flow_events_lock:
-            events = read_flow_events()
-            events.insert(0, event)
-            write_flow_events(events)
-            total = len(events)
+            telemetry.record_flow_event(event, store.get())
+            total = telemetry.flow_event_count()
         return jsonify({
             "event": event,
             "total": total,
             "total_pages": max(1, (total + FLOW_EVENT_PAGE_SIZE - 1) // FLOW_EVENT_PAGE_SIZE),
         }), 201
+
+    @app.get("/api/data/measurements")
+    def data_measurements():
+        page = max(1, request.args.get("page", default=1, type=int))
+        page_size = min(1000, max(1, request.args.get("page_size", default=100, type=int)))
+        total = telemetry.measurement_count()
+        total_pages = max(1, (total + page_size - 1) // page_size)
+        page = min(page, total_pages)
+        return jsonify({
+            "measurements": telemetry.list_measurements(limit=page_size, offset=(page - 1) * page_size),
+            "page": page,
+            "page_size": page_size,
+            "total": total,
+            "total_pages": total_pages,
+        })
+
+    @app.get("/api/data/export")
+    def data_export():
+        def epoch_parameter(name: str) -> float | None:
+            raw = request.args.get(name)
+            if raw is None:
+                return None
+            try:
+                value = float(raw)
+            except ValueError as exc:
+                raise ValueError(f"{name} must be a Unix timestamp in seconds") from exc
+            if not math.isfinite(value) or value < 0:
+                raise ValueError(f"{name} must be a non-negative Unix timestamp in seconds")
+            return value
+
+        try:
+            start = epoch_parameter("from")
+            end = epoch_parameter("to")
+            if start is not None and end is not None and start > end:
+                raise ValueError("from must be earlier than or equal to to")
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        export_format = request.args.get("format", "jsonl").lower()
+        if export_format not in {"jsonl", "csv"}:
+            return jsonify({"error": "format must be jsonl or csv"}), 400
+
+        records = telemetry.iter_measurements(start=start, end=end)
+        if export_format == "jsonl":
+            def jsonl_rows():
+                for record in records:
+                    yield json.dumps(record, separators=(",", ":"), allow_nan=False) + "\n"
+
+            return Response(
+                stream_with_context(jsonl_rows()),
+                mimetype="application/x-ndjson",
+                headers={"Content-Disposition": "attachment; filename=openlisapro-measurements.jsonl"},
+            )
+
+        def csv_rows():
+            buffer = io.StringIO()
+            writer = csv.writer(buffer)
+            writer.writerow([
+                "timestamp_unix", "temp_inside_c", "humidity_inside_rh", "dew_point_inside_c",
+                "temp_outside_c", "humidity_outside_rh", "dew_point_outside_c", "vpd_inside_kpa",
+                "vpd_outside_kpa", "fan_actual_pct", "fan_command_pct", "phase_id", "mode",
+                "controller_json", "device_json", "settings_json", "legacy",
+            ])
+            yield buffer.getvalue()
+            buffer.seek(0)
+            buffer.truncate(0)
+            for record in records:
+                metrics = record["metrics"]
+                writer.writerow([
+                    record["t"], metrics["temp_inside_c"], metrics["humidity_inside_rh"],
+                    metrics["dew_point_inside_c"], metrics["temp_outside_c"],
+                    metrics["humidity_outside_rh"], metrics["dew_point_outside_c"],
+                    metrics["vpd_inside_kpa"], metrics["vpd_outside_kpa"],
+                    metrics["fan_actual_pct"], metrics["fan_command_pct"], metrics["phase_id"],
+                    metrics["mode"], json.dumps(record["controller"], separators=(",", ":")),
+                    json.dumps(record["device"], separators=(",", ":")),
+                    json.dumps(record["settings"], separators=(",", ":")) if record["settings"] is not None else "",
+                    record["legacy"],
+                ])
+                yield buffer.getvalue()
+                buffer.seek(0)
+                buffer.truncate(0)
+
+        return Response(
+            stream_with_context(csv_rows()),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=openlisapro-measurements.csv"},
+        )
 
     @app.post("/api/proxy/silent/toggle")
     def proxy_toggle_silent():
