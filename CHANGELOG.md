@@ -2,6 +2,13 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.36] - 2026-10-24
+
+### Added
+
+- Replicate measurements, flow events, and their settings snapshots from the primary into the replica's SQLite database.
+- Resume event history synchronization from persisted cursors and avoid duplicate records when a batch is retried.
+
 ## [0.1.35] - 2026-10-24
 
 ### Added

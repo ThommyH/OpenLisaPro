@@ -74,6 +74,7 @@ class TelemetryStore:
 
                 CREATE TABLE IF NOT EXISTS measurements (
                     id INTEGER PRIMARY KEY,
+                    source_key TEXT UNIQUE,
                     sampled_at REAL NOT NULL,
                     settings_snapshot_id INTEGER REFERENCES settings_snapshots(id),
                     temp_inside_c REAL,
@@ -101,6 +102,7 @@ class TelemetryStore:
 
                 CREATE TABLE IF NOT EXISTS flow_events (
                     id INTEGER PRIMARY KEY,
+                    source_key TEXT UNIQUE,
                     occurred_at_ms INTEGER NOT NULL,
                     settings_snapshot_id INTEGER REFERENCES settings_snapshots(id),
                     event_json TEXT NOT NULL,
@@ -113,7 +115,103 @@ class TelemetryStore:
                     name TEXT PRIMARY KEY,
                     completed_at REAL NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS replication_state (
+                    primary_url TEXT PRIMARY KEY,
+                    measurement_id INTEGER NOT NULL DEFAULT 0,
+                    flow_event_id INTEGER NOT NULL DEFAULT 0
+                );
                 """
+            )
+            for table in ("measurements", "flow_events"):
+                columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+                if "source_key" not in columns:
+                    connection.execute(f"ALTER TABLE {table} ADD COLUMN source_key TEXT")
+                    connection.execute(f"CREATE UNIQUE INDEX {table}_source_key_idx ON {table}(source_key)")
+
+    def replication_cursor(self, primary_url: str) -> tuple[int, int]:
+        with self._connection() as connection:
+            row = connection.execute(
+                "SELECT measurement_id, flow_event_id FROM replication_state WHERE primary_url = ?",
+                (primary_url,),
+            ).fetchone()
+        return (int(row[0]), int(row[1])) if row else (0, 0)
+
+    def export_replication_batch(
+        self, *, after_measurement_id: int, after_flow_event_id: int, limit: int = 250
+    ) -> dict[str, Any]:
+        with self._connection() as connection:
+            measurement_rows = connection.execute(
+                self._measurement_select() + " WHERE m.id > ? ORDER BY m.id LIMIT ?",
+                (after_measurement_id, limit),
+            ).fetchall()
+            event_rows = connection.execute(
+                """SELECT e.id, e.event_json, s.config_json AS settings_json
+                   FROM flow_events e LEFT JOIN settings_snapshots s ON s.id=e.settings_snapshot_id
+                   WHERE e.id > ? ORDER BY e.id LIMIT ?""",
+                (after_flow_event_id, limit),
+            ).fetchall()
+        measurements = [self._decode_measurement(row) for row in measurement_rows]
+        events = []
+        for row in event_rows:
+            events.append({
+                "id": int(row["id"]),
+                "event": json.loads(row["event_json"]),
+                "settings": json.loads(row["settings_json"]) if row["settings_json"] else None,
+            })
+        return {
+            "measurements": measurements,
+            "flow_events": events,
+            "measurement_cursor": measurements[-1]["id"] if measurements else after_measurement_id,
+            "flow_event_cursor": events[-1]["id"] if events else after_flow_event_id,
+        }
+
+    def import_replication_batch(self, primary_url: str, payload: dict[str, Any]) -> None:
+        measurements = payload.get("measurements", [])
+        events = payload.get("flow_events", [])
+        with self._lock, self._connection() as connection:
+            for item in measurements:
+                if not isinstance(item, dict) or not isinstance(item.get("id"), int):
+                    continue
+                source_key = f"{primary_url}:measurement:{item['id']}"
+                if connection.execute("SELECT 1 FROM measurements WHERE source_key=?", (source_key,)).fetchone():
+                    continue
+                metrics = item.get("metrics") or {}
+                settings = item.get("settings")
+                snapshot_id = self._snapshot_id(connection, float(item.get("t", 0)), settings)
+                connection.execute(
+                    """INSERT INTO measurements(
+                       source_key, sampled_at, settings_snapshot_id, temp_inside_c, humidity_inside_rh,
+                       dew_point_inside_c, temp_outside_c, humidity_outside_rh, dew_point_outside_c,
+                       vpd_inside_kpa, vpd_outside_kpa, fan_actual_pct, fan_command_pct, phase_id, mode,
+                       device_json, controller_json, chart_json, is_legacy)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (source_key, float(item.get("t", 0)), snapshot_id,
+                     _number(metrics.get("temp_inside_c")), _number(metrics.get("humidity_inside_rh")),
+                     _number(metrics.get("dew_point_inside_c")), _number(metrics.get("temp_outside_c")),
+                     _number(metrics.get("humidity_outside_rh")), _number(metrics.get("dew_point_outside_c")),
+                     _number(metrics.get("vpd_inside_kpa")), _number(metrics.get("vpd_outside_kpa")),
+                     _number(metrics.get("fan_actual_pct")), _number(metrics.get("fan_command_pct")),
+                     metrics.get("phase_id"), metrics.get("mode"), _json(item.get("device") or {}),
+                     _json(item.get("controller") or {}), _json(item.get("chart") or {}), int(bool(item.get("legacy"))))
+                )
+            for item in events:
+                if not isinstance(item, dict) or not isinstance(item.get("id"), int) or not isinstance(item.get("event"), dict):
+                    continue
+                source_key = f"{primary_url}:flow-event:{item['id']}"
+                if connection.execute("SELECT 1 FROM flow_events WHERE source_key=?", (source_key,)).fetchone():
+                    continue
+                event = item["event"]
+                snapshot_id = self._snapshot_id(connection, float(event.get("at", 0)) / 1000, item.get("settings"))
+                connection.execute(
+                    "INSERT INTO flow_events(source_key, occurred_at_ms, settings_snapshot_id, event_json) VALUES(?,?,?,?)",
+                    (source_key, int(event.get("at", 0)), snapshot_id, _json(event)),
+                )
+            connection.execute(
+                """INSERT INTO replication_state(primary_url, measurement_id, flow_event_id) VALUES(?,?,?)
+                   ON CONFLICT(primary_url) DO UPDATE SET measurement_id=MAX(measurement_id, excluded.measurement_id),
+                   flow_event_id=MAX(flow_event_id, excluded.flow_event_id)""",
+                (primary_url, int(payload.get("measurement_cursor", 0)), int(payload.get("flow_event_cursor", 0))),
             )
 
     @staticmethod

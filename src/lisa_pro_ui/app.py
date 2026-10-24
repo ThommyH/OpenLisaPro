@@ -152,6 +152,13 @@ def create_app(
                 payload = json.loads(response.read().decode("utf-8"))
             if payload.get("role") == "primary" and isinstance(payload.get("config"), dict):
                 store.replace(payload["config"])
+                measurement_id, flow_event_id = telemetry.replication_cursor(master_url)
+                sync_req = Request(
+                    f"{master_url}/api/ha/events?measurement_after={measurement_id}&flow_event_after={flow_event_id}",
+                    headers={"Accept": "application/json"},
+                )
+                with urlopen(sync_req, timeout=8) as response:
+                    telemetry.import_replication_batch(master_url, json.loads(response.read().decode("utf-8")))
                 healthy = True
                 heartbeat_body = {"node_name": app.config["HA_NODE_NAME"], "node_url": app.config["HA_NODE_URL"]}
                 heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps(heartbeat_body).encode(), headers={"Content-Type": "application/json"}, method="POST")
@@ -194,6 +201,18 @@ def create_app(
         if ha_role != "primary":
             return jsonify({"error": "This node is not the configured primary."}), 409
         return jsonify({"role": "primary", "node_name": app.config["HA_NODE_NAME"], "config": store.get()})
+
+    @app.get("/api/ha/events")
+    def ha_events_route():
+        if ha_role != "primary":
+            return jsonify({"error": "This node is not the configured primary."}), 409
+        measurement_after = max(0, request.args.get("measurement_after", default=0, type=int))
+        flow_event_after = max(0, request.args.get("flow_event_after", default=0, type=int))
+        return jsonify(telemetry.export_replication_batch(
+            after_measurement_id=measurement_after,
+            after_flow_event_id=flow_event_after,
+            limit=250,
+        ))
 
     @app.get("/api/ha")
     def ha_status():
