@@ -1228,6 +1228,13 @@
       banner.dataset.role = ha.role;
       banner.replaceChildren();
       const addText = (value) => banner.appendChild(document.createTextNode(value));
+      const addHealth = (online) => {
+        const status = document.createElement("span");
+        status.className = "ha-health";
+        status.dataset.state = online ? "online" : "offline";
+        status.textContent = online ? "online" : "offline";
+        banner.appendChild(status);
+      };
       const host = (value) => {
         try {
           const parsed = new URL(value);
@@ -1248,13 +1255,15 @@
       };
       const ownHost = host(ha.node_url);
       if (isReplica) {
-        addText(`REPLICA · ${ha.node_name} (${ownHost || "IP unavailable"}) · MASTER `);
+        addText(`REPLICA ${ownHost || "IP unavailable"} · MASTER `);
         if (!addLink(ha.master_url, host(ha.master_url), "Open the master OpenLisaPro UI")) addText("not configured");
-        addText(` · ${ha.master_healthy ? "online" : "unreachable"}`);
+        addText(" · ");
+        addHealth(ha.master_healthy);
       } else {
-        addText(`${ha.configured_role === "replica" ? "BACKUP MASTER" : "MASTER"} · ${ha.node_name} (${ownHost || "IP unavailable"}) · REPLICA `);
+        addText(`${ha.configured_role === "replica" ? "BACKUP MASTER" : "MASTER"} ${ownHost || "IP unavailable"} · REPLICA `);
         if (!addLink(ha.replica_url, host(ha.replica_url), "Open the replica OpenLisaPro UI")) addText("unknown");
-        addText(` · ${ha.replica_healthy ? "online" : "offline"}`);
+        addText(" · ");
+        addHealth(ha.replica_healthy);
       }
       document.querySelectorAll("#tab-control .control-toolbar input, #tab-control .control-toolbar button, #manualModePanel input, #controlForm input, #controlForm select, #controlForm button, #tab-device input, #tab-device select, #tab-device button").forEach((el) => {
         if (el.dataset.haWasDisabled === undefined) el.dataset.haWasDisabled = el.disabled ? "1" : "0";

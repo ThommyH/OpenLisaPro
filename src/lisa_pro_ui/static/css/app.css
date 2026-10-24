@@ -1592,6 +1592,8 @@ input:focus {
 }
 .ha-banner[data-role="replica"] { border-color: rgba(239, 178, 86, .45); color: #efb256; }
 .ha-banner[data-role="primary"] { border-color: rgba(118, 202, 150, .4); color: #76ca96; }
+.ha-health[data-state="offline"] { color: var(--danger, #ff6868); }
+.ha-health[data-state="online"] { color: var(--ok, #76ca96); }
 .ha-banner a { color: inherit; text-decoration: underline; text-underline-offset: 0.15em; }
 .ha-banner a:hover { color: var(--text, #fff); }
 .ha-readonly { opacity: .58; }
