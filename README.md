@@ -13,7 +13,6 @@ The browser communicates with the local Flask app, which proxies requests to the
 - Show sensor temperature and humidity to one decimal place when device readings include fractions.
 - Gradually boost fan speed above a stage's soft temperature limit until temperature starts falling, with a per-stage boost cap.
 - Review a two-day fan and VPD chart, or page through 14 days of controller flow changes.
-- Run one OpenLisaPro primary with a replica. The replica syncs the primary's configuration every five seconds, switches its control loop on when the primary is unreachable, and returns to read-only replica mode when the primary recovers.
 - Use `LisaProClient` to access the device API from Python.
 
 ## Quick start
@@ -25,7 +24,11 @@ uv sync
 LISA_PRO_URL=http://192.168.1.50 uv run lisa-pro-ui
 ```
 
-For high availability, run a second instance with the same `LISA_PRO_URL` and a separate data directory. Configure its role and primary URL:
+## High availability
+
+Run one OpenLisaPro primary and one replica, both connected to the same growbox. The replica syncs the primary's configuration every five seconds and keeps its settings read-only while the primary is healthy. If the primary becomes unreachable, the replica takes over the control loop; when the primary returns, the replica resumes read-only mode. The primary uses the default `LISA_PRO_HA_ROLE=primary`. Both instances need network access to the growbox, and the replica must be able to reach the primary. See [Installation and configuration](docs/installation.md) for all HA variables and deployment details.
+
+Configure the replica with the same `LISA_PRO_URL`, a separate data directory, its replica role, and the primary's URL:
 
 ```bash
 LISA_PRO_URL=http://192.168.1.50 \
@@ -34,8 +37,6 @@ LISA_PRO_HA_ROLE=replica \
 LISA_PRO_HA_MASTER_URL=http://192.168.1.51:5050 \
 uv run lisa-pro-ui
 ```
-
-The primary uses the default `LISA_PRO_HA_ROLE=primary`. Both instances need network access to the growbox, and the replica must be able to reach the primary. See [Installation and configuration](docs/installation.md) for all HA variables and deployment details.
 
 ## Documentation
 
