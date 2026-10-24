@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -40,6 +40,7 @@
           </div>
           <button type="button" class="build-refresh" id="checkBuild" aria-label="Check GitHub for a newer release" title="Check for a newer release">↻</button>
         </div>
+        <label class="language-switch"><span>Language</span><select id="languageSelect" aria-label="Language"><option value="en">English</option><option value="de">Deutsch</option></select></label>
         <div class="ha-banner" id="haBanner" hidden role="status"></div>
       </div>
     </header>
@@ -483,6 +484,7 @@
       </form>
     </dialog>
 
+    <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   </body>
 </html>

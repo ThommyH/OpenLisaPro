@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.34] - 2026-10-24
+
+### Added
+
+- Add an English/German UI language switch with persistent selection and localized dashboard text, charts, and dates.
+
 ## [0.1.33] - 2026-10-24
 
 ### Changed

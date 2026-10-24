@@ -45,6 +45,8 @@ body:not(.lights-on) #led-status-dot { background: var(--danger); }
 
 body.lights-on #led-status-label::after { content: " · LED ON"; color: var(--leaf-deep); font-weight: 600; }
 body:not(.lights-on) #led-status-label::after { content: " · LED OFF"; color: var(--ink-dim); font-weight: 600; }
+html[lang="de"] body.lights-on #led-status-label::after { content: " · LED AN"; }
+html[lang="de"] body:not(.lights-on) #led-status-label::after { content: " · LED AUS"; }
 
 /* Meter turns dim-red while all LEDs are off (state feedback, same in both themes) */
 body:not(.lights-on) .meter { background: rgba(255, 107, 90, 0.28); }
@@ -193,6 +195,8 @@ body.day-mode .atmosphere {
 .link-status small { color: var(--ink-dim); font-family: var(--font-mono); font-size: 0.72rem; }
 
 .topbar-right { display: grid; justify-items: end; gap: 0.65rem; }
+.language-switch { display: flex; align-items: center; gap: 0.45rem; color: var(--ink-dim); font-size: 0.72rem; }
+.language-switch select { border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.3rem 0.5rem; color: var(--ink); background: var(--bg-1); font: inherit; cursor: pointer; }
 .build-status { display: flex; align-items: center; gap: 0.5rem; text-align: right; }
 .build-dot { width: 0.5rem; height: 0.5rem; flex: 0 0 auto; border-radius: 50%; background: var(--warn); }
 .build-status[data-state="current"] .build-dot { background: var(--ok); }

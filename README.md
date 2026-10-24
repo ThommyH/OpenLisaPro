@@ -13,6 +13,7 @@ The browser communicates with the local Flask app, which proxies requests to the
 - Show sensor temperature and humidity to one decimal place when device readings include fractions.
 - Gradually boost fan speed above a stage's soft temperature limit until temperature starts falling, with a per-stage boost cap.
 - Review a two-day fan and VPD chart, or page through 14 days of controller flow changes.
+- Switch the dashboard between English and German.
 - Use `LisaProClient` to access the device API from Python.
 
 ## Quick start

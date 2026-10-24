@@ -42,13 +42,13 @@
   const LED_MODES = ["day", "day_silent", "night", "night_silent"];
 
   const CHART_SERIES = [
-    { key: "fan_command", label: "Fan command", color: "#b8f255", axis: "fan" },
-    { key: "fan_actual", label: "Fan actual", color: "#6dffb0", axis: "fan" },
-    { key: "fan_min_limit", label: "Fan min", color: "rgba(238,247,240,0.55)", axis: "fan", dash: true },
-    { key: "fan_max_limit", label: "Fan max", color: "#ffb84d", axis: "fan", dash: true },
-    { key: "vpd_inside", label: "Inside VPD", color: "#7ec8ff", axis: "vpd" },
-    { key: "vpd_outside", label: "Outside VPD", color: "#c4a1ff", axis: "vpd" },
-    { key: "vpd_target", label: "VPD target", color: "#ffb84d", axis: "vpd", dash: true },
+    { key: "fan_command", label: window.t("Fan command"), color: "#b8f255", axis: "fan" },
+    { key: "fan_actual", label: window.t("Fan actual"), color: "#6dffb0", axis: "fan" },
+    { key: "fan_min_limit", label: window.t("Fan min"), color: "rgba(238,247,240,0.55)", axis: "fan", dash: true },
+    { key: "fan_max_limit", label: window.t("Fan max"), color: "#ffb84d", axis: "fan", dash: true },
+    { key: "vpd_inside", label: window.t("Inside VPD"), color: "#7ec8ff", axis: "vpd" },
+    { key: "vpd_outside", label: window.t("Outside VPD"), color: "#c4a1ff", axis: "vpd" },
+    { key: "vpd_target", label: window.t("VPD target"), color: "#ffb84d", axis: "vpd", dash: true },
   ];
 
   function toast(msg) {
@@ -92,7 +92,7 @@
         label.textContent = "Update available";
         detail.textContent = `Running ${current} · latest ${latest}`;
       }
-      status.title = result.checked_at ? `Checked ${new Date(result.checked_at * 1000).toLocaleString()}` : "";
+      status.title = result.checked_at ? `${window.t("Checked")} ${new Date(result.checked_at * 1000).toLocaleString(window.i18n.locale)}` : "";
     } catch (error) {
       status.dataset.state = "error";
       label.textContent = "Version check failed";
@@ -587,7 +587,7 @@
       button.classList.toggle("selected", index === 0);
       const time = document.createElement("time");
       time.dateTime = new Date(event.at).toISOString();
-      time.textContent = new Date(event.at).toLocaleString([], { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      time.textContent = new Date(event.at).toLocaleString(window.i18n.locale, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
       const title = document.createElement("span");
       title.textContent = event.title;
       const copy = document.createElement("span");
@@ -1190,7 +1190,7 @@
     if (!history || history.length < 2) {
       ctx.fillStyle = "rgba(238,247,240,0.45)";
       ctx.font = "12px Outfit, sans-serif";
-      ctx.fillText("Collecting control history…", pad.l, h / 2);
+      ctx.fillText(window.t("Collecting control history…"), pad.l, h / 2);
       return;
     }
 
@@ -1211,7 +1211,7 @@
     const panelH = (h - pad.t - pad.b - gap) / 2;
     const xOf = (t) => plotLeft + ((t - start) / displayRangeSeconds) * plotW;
     const formatAxisTime = (t) => state.chartHours >= 24
-      ? new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })
+      ? new Date(t * 1000).toLocaleString(window.i18n.locale, { weekday: "short", hour: "2-digit", minute: "2-digit" })
       : displayRangeSeconds < 3600 ? formatClock(t) : formatClock(t).slice(0, 5);
 
     const drawPanel = (axis, title, top, maxValue, ticks) => {
@@ -1249,9 +1249,9 @@
       return bottom;
     };
 
-    const fanBottom = drawPanel("fan", "Fan speed · %", pad.t, 100, [0, 25, 50, 75, 100]);
+    const fanBottom = drawPanel("fan", window.t("Fan speed · %"), pad.t, 100, [0, 25, 50, 75, 100]);
     const vpdTop = fanBottom + gap;
-    const vpdBottom = drawPanel("vpd", "VPD · kPa", vpdTop, 2.5, [0, 0.5, 1, 1.5, 2, 2.5]);
+    const vpdBottom = drawPanel("vpd", window.t("VPD · kPa"), vpdTop, 2.5, [0, 0.5, 1, 1.5, 2, 2.5]);
     const tickCount = Math.min(6, Math.max(2, Math.floor(plotW / 110)));
     ctx.font = "8px JetBrains Mono, monospace";
     for (let i = 0; i <= tickCount; i++) {
@@ -1267,7 +1267,7 @@
     const first = visible.length ? formatAxisTime(visible[0].t) : "—";
     const last = visible.length ? formatAxisTime(visible[visible.length - 1].t) : "—";
     const summary = $("chartSummary");
-    if (summary) summary.textContent = visible.length ? `${first} – ${last} · ${visible.length.toLocaleString()} samples · ${history.length.toLocaleString()} retained` : "No samples in this time window · history is retained for 2 days";
+    if (summary) summary.textContent = visible.length ? `${first} – ${last} · ${visible.length.toLocaleString(window.i18n.locale)} ${window.t("samples")} · ${history.length.toLocaleString(window.i18n.locale)} ${window.t("retained")}` : window.t("No samples in this time window · history is retained for 2 days");
     ctx.setLineDash([]);
   }
 
