@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.38] - 2026-10-24
+
+### Fixed
+
+- Keep a reachable primary in replica mode when a history backfill or heartbeat request times out.
+
 ## [0.1.37] - 2026-10-24
 
 ### Changed

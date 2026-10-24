@@ -213,12 +213,33 @@ def create_app(
             app.logger.error("Replica mode requires LISA_PRO_HA_MASTER_URL")
             return False
         healthy = False
+        payload = None
         try:
             req = Request(f"{master_url}/api/ha/snapshot", headers={"Accept": "application/json"})
             with urlopen(req, timeout=3) as response:
                 payload = json.loads(response.read().decode("utf-8"))
             if payload.get("role") == "primary" and isinstance(payload.get("config"), dict):
                 store.replace(payload["config"])
+                healthy = True
+        except Exception as exc:  # noqa: BLE001 — fail over when the master cannot be reached
+            app.logger.warning("HA master check failed: %s", exc)
+            healthy = False
+        with ha_lock:
+            ha_state["last_check_at"] = time.time()
+            ha_state["master_healthy"] = healthy
+        previous_role = ha_snapshot()["role"]
+        changed = set_ha_role("replica" if healthy else "primary")
+        if healthy and previous_role == "primary" and changed:
+            apply_master_config_to_device()
+        if healthy:
+            heartbeat_body = {"node_name": app.config["HA_NODE_NAME"], "node_url": app.config["HA_NODE_URL"]}
+            heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps(heartbeat_body).encode(), headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                with urlopen(heartbeat, timeout=3):
+                    pass
+            except Exception as exc:  # noqa: BLE001 — heartbeat problems do not override the authoritative snapshot result
+                app.logger.warning("HA master heartbeat failed: %s", exc)
+            try:
                 measurement_id, flow_event_id = telemetry.replication_cursor(master_url)
                 sync_req = Request(
                     f"{master_url}/api/ha/events?measurement_after={measurement_id}&flow_event_after={flow_event_id}",
@@ -231,21 +252,8 @@ def create_app(
                     if exc.code != 404:
                         raise
                     sync_legacy_history(master_url)
-                healthy = True
-                heartbeat_body = {"node_name": app.config["HA_NODE_NAME"], "node_url": app.config["HA_NODE_URL"]}
-                heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps(heartbeat_body).encode(), headers={"Content-Type": "application/json"}, method="POST")
-                with urlopen(heartbeat, timeout=3):
-                    pass
-        except Exception as exc:  # noqa: BLE001 — fail over when the master cannot be reached
-            app.logger.warning("HA master check failed: %s", exc)
-            healthy = False
-        with ha_lock:
-            ha_state["last_check_at"] = time.time()
-            ha_state["master_healthy"] = healthy
-        previous_role = ha_snapshot()["role"]
-        changed = set_ha_role("replica" if healthy else "primary")
-        if healthy and previous_role == "primary" and changed:
-            apply_master_config_to_device()
+            except Exception as exc:  # noqa: BLE001 — history replication cannot make a healthy primary look offline
+                app.logger.warning("HA history sync failed: %s", exc)
         return healthy
 
     def monitor_master():
