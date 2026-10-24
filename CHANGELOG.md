@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.31] - 2026-10-24
+
+### Changed
+
+- Reduce the master/replica status banner and place it beside the version check in the header.
+
 ## [0.1.30] - 2026-10-24
 
 ### Added

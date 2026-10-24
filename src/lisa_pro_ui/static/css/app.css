@@ -1580,15 +1580,20 @@ input:focus {
   .actuators { gap: 0.55rem; }
 }
 .ha-banner {
-  margin: 0.8rem auto;
-  width: min(100% - 2rem, 1440px);
-  padding: 0.7rem 1rem;
+  justify-self: end;
+  margin: 0;
+  max-width: min(100%, 26rem);
+  padding: 0.3rem 0.55rem;
   border: 1px solid var(--line, rgba(255,255,255,.14));
-  border-radius: 0.65rem;
+  border-radius: 0.45rem;
   color: var(--muted, #aab3ad);
   background: rgba(255,255,255,.04);
-  font: 500 .78rem/1.4 "JetBrains Mono", monospace;
+  font: 500 .64rem/1.35 "JetBrains Mono", monospace;
 }
 .ha-banner[data-role="replica"] { border-color: rgba(239, 178, 86, .45); color: #efb256; }
 .ha-banner[data-role="primary"] { border-color: rgba(118, 202, 150, .4); color: #76ca96; }
 .ha-readonly { opacity: .58; }
+
+@media (max-width: 700px) {
+  .ha-banner { justify-self: start; }
+}
