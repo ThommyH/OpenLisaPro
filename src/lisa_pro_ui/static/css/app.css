@@ -1323,6 +1323,44 @@ input:focus {
   font-weight: 500;
 }
 
+.value-edit-trigger {
+  border: 0;
+  border-bottom: 1px dotted rgba(238, 247, 240, 0.45);
+  padding: 0;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  cursor: pointer;
+}
+.value-edit-trigger:hover { border-bottom-color: var(--leaf); color: var(--leaf); }
+.value-edit-trigger:focus-visible { outline: 2px solid var(--leaf); outline-offset: 3px; border-radius: 2px; }
+.value-edit-trigger:disabled { cursor: not-allowed; }
+.dual-range-editor { display: inline-flex; align-items: center; gap: 0.2rem; }
+.dual-range-editor input,
+.led-value-editor {
+  width: 3.8rem;
+  min-width: 0;
+  padding: 0.12rem 0.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  color: var(--ink);
+  background: rgba(4, 13, 10, 0.8);
+  font: 500 0.75rem/1.4 var(--font-mono);
+}
+.value-edit-save {
+  padding: 0.12rem 0.3rem;
+  border: 1px solid var(--line);
+  border-radius: 0.3rem;
+  color: var(--ink-dim);
+  background: transparent;
+  font: 500 0.65rem/1.4 var(--font-ui);
+  cursor: pointer;
+}
+.value-edit-save:hover { border-color: var(--leaf); color: var(--leaf); }
+
 .dual-range-track {
   position: relative;
   height: 1.6rem;
@@ -1415,6 +1453,7 @@ input:focus {
   color: var(--ink);
   font-weight: 500;
 }
+.led-value-editor { width: 4rem; text-align: right; }
 
 .led-slider input[type="range"] {
   width: 100%;

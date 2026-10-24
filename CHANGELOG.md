@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.33] - 2026-10-24
+
+### Changed
+
+- Make LED, fan limit, and VPD target values directly editable from their displayed values.
+
 ## [0.1.32] - 2026-10-24
 
 ### Changed

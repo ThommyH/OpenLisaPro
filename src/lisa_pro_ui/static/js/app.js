@@ -12,6 +12,7 @@
     chartLoaded: false,
     controlDirty: false,
     controlHydrated: false,
+    haReadOnly: false,
     startDirty: false,
     dayDirty: false,
     silentEnabled: false,
@@ -690,7 +691,7 @@
       data-min="${rangeMin}" data-max="${rangeMax}" data-step="${step}" data-unit="${unit}">
       <div class="dual-range-head">
         <span>${label}</span>
-        <strong class="mono dual-range-label">${fmt(min)}–${fmt(max)}${unit}</strong>
+        <button type="button" class="mono dual-range-label value-edit-trigger" aria-label="Edit ${label} minimum and maximum">${fmt(min)}–${fmt(max)}${unit}</button>
       </div>
       <div class="dual-range-track">
         <div class="dual-range-fill"></div>
@@ -705,14 +706,109 @@
   }
 
   function ledSliderHtml({ phaseId, mode, value, label }) {
-    return `<label class="led-slider">
+    return `<div class="led-slider">
       <span class="led-slider-head">
         <span>${label}</span>
-        <strong class="mono led-val">${Math.round(value)}%</strong>
+        <button type="button" class="mono led-val value-edit-trigger" aria-label="Edit ${label} level">${Math.round(value)}%</button>
       </span>
       <input type="range" min="0" max="100" step="1" value="${value}"
         data-led-phase="${phaseId}" data-led-mode="${mode}" aria-label="${label}" />
-    </label>`;
+    </div>`;
+  }
+
+  function editDualRange(root) {
+    if (!root || state.haReadOnly) return;
+    const label = root.querySelector(".dual-range-label");
+    const lo = root.querySelector(".dual-lo");
+    const hi = root.querySelector(".dual-hi");
+    if (!label || !lo || !hi || lo.disabled || label.dataset.editing === "1") return;
+    const editor = document.createElement("span");
+    editor.className = "dual-range-editor";
+    const makeInput = (value, name) => {
+      const input = document.createElement("input");
+      input.type = "number";
+      input.required = true;
+      input.min = root.dataset.min;
+      input.max = root.dataset.max;
+      input.step = root.dataset.step;
+      input.value = value;
+      input.setAttribute("aria-label", `${root.dataset.kind} ${name}`);
+      input.title = name === "min" ? "Minimum" : "Maximum";
+      return input;
+    };
+    const minInput = makeInput(lo.value, "min");
+    const maxInput = makeInput(hi.value, "max");
+    const save = document.createElement("button");
+    save.type = "button";
+    save.className = "value-edit-save";
+    save.textContent = "Done";
+    save.setAttribute("aria-label", "Apply minimum and maximum");
+    editor.append(minInput, document.createTextNode("–"), maxInput, save);
+    label.replaceWith(editor);
+    const close = (commit) => {
+      if (commit) {
+        const minValue = Number(minInput.value);
+        const maxValue = Number(maxInput.value);
+        if (!minInput.value.trim() || !maxInput.value.trim() || !minInput.checkValidity() || !maxInput.checkValidity() || !Number.isFinite(minValue) || !Number.isFinite(maxValue) || minValue > maxValue) {
+          if (minValue > maxValue) maxInput.setCustomValidity("Maximum must be greater than or equal to minimum.");
+          (minValue > maxValue ? maxInput : minInput).reportValidity();
+          (minValue > maxValue ? maxInput : minInput).focus();
+          return;
+        }
+        maxInput.setCustomValidity("");
+        setDualRange(root, minValue, maxValue);
+        markControlDirty();
+      }
+      editor.replaceWith(label);
+      syncDualRange(root);
+    };
+    [minInput, maxInput].forEach((input) => input.addEventListener("input", () => maxInput.setCustomValidity("")));
+    save.addEventListener("click", () => close(true));
+    [minInput, maxInput].forEach((input) => input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); close(true); }
+      if (event.key === "Escape") { event.preventDefault(); close(false); }
+    }));
+    minInput.focus();
+    minInput.select();
+  }
+
+  function editLedValue(button) {
+    if (!button || state.haReadOnly) return;
+    const slider = button.closest(".led-slider")?.querySelector('input[type="range"]');
+    if (!slider || slider.disabled || button.dataset.editing === "1") return;
+    button.dataset.editing = "1";
+    const input = document.createElement("input");
+    input.type = "number";
+    input.min = slider.min;
+    input.max = slider.max;
+    input.step = slider.step;
+    input.value = slider.value;
+    input.className = "led-value-editor mono";
+    input.setAttribute("aria-label", "LED percentage");
+    button.replaceWith(input);
+    let finished = false;
+    const finish = (commit) => {
+      if (finished) return;
+      finished = true;
+      if (commit) {
+        const value = Number(input.value);
+        if (input.value.trim() && Number.isFinite(value)) {
+          slider.value = String(Math.max(Number(slider.min), Math.min(Number(slider.max), value)));
+          button.textContent = `${Math.round(Number(slider.value))}%`;
+          markControlDirty();
+        }
+      }
+      input.replaceWith(button);
+      delete button.dataset.editing;
+    };
+    input.addEventListener("change", () => finish(true), { once: true });
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); finish(true); }
+      if (event.key === "Escape") { event.preventDefault(); finish(false); }
+    });
+    input.addEventListener("blur", () => finish(true), { once: true });
+    input.focus();
+    input.select();
   }
 
   function syncDualRange(root) {
@@ -768,6 +864,14 @@
         return;
       }
       root.dataset.bound = "1";
+      const valueLabel = root.querySelector(".dual-range-label");
+      valueLabel?.addEventListener("click", () => editDualRange(root));
+      valueLabel?.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          editDualRange(root);
+        }
+      });
       root.querySelectorAll(".dual-lo, .dual-hi").forEach((input) => {
         input.addEventListener("input", () => {
           syncDualRange(root);
@@ -914,6 +1018,15 @@
         const val = input.parentElement.querySelector(".led-val");
         if (val) val.textContent = `${Math.round(Number(input.value))}%`;
         markControlDirty();
+      });
+    });
+    root.querySelectorAll(".led-val").forEach((button) => {
+      button.addEventListener("click", () => editLedValue(button));
+      button.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          editLedValue(button);
+        }
       });
     });
     root.querySelectorAll("input[data-temperature-phase]").forEach((input) => {
@@ -1224,6 +1337,7 @@
       const ha = await api("/api/ha");
       const banner = $("haBanner");
       const isReplica = ha.role === "replica";
+      state.haReadOnly = isReplica;
       banner.hidden = false;
       banner.dataset.role = ha.role;
       banner.replaceChildren();
