@@ -128,6 +128,14 @@ class ConfigStore:
             self.save()
             return deepcopy(self._data)
 
+    def replace(self, config: dict[str, Any]) -> dict[str, Any]:
+        """Replace persisted settings with a normalized upstream snapshot."""
+        with self._lock:
+            self._data = self._merge(default_config(), config)
+            self._legacy_vpd = None
+            self.save()
+            return deepcopy(self._data)
+
     def ensure_fan_limits_from_phases(self, phases: list[dict[str, Any]]) -> dict[str, Any]:
         """Seed missing fan / LED / VPD overrides from device phase settings."""
         with self._lock:

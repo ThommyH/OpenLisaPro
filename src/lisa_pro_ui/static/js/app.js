@@ -1213,6 +1213,27 @@
     try {
       const snap = await api("/api/control");
       renderControl(snap, { forceForm });
+      await refreshHa();
+    } catch (err) {
+      console.error(err);
+    }
+  }
+
+  async function refreshHa() {
+    try {
+      const ha = await api("/api/ha");
+      const banner = $("haBanner");
+      const isReplica = ha.role === "replica";
+      banner.hidden = false;
+      banner.textContent = isReplica
+        ? `REPLICA · ${ha.node_name} · Master ${ha.master_url || "not configured"} ${ha.master_healthy ? "online" : "unreachable"}`
+        : `MASTER · ${ha.node_name} · Replica ${ha.replica_healthy ? "online" : "offline"}${ha.configured_role === "replica" ? " · promoted backup" : ""}`;
+      banner.dataset.role = ha.role;
+      document.querySelectorAll("#tab-control .control-toolbar input, #tab-control .control-toolbar button, #manualModePanel input, #controlForm input, #controlForm select, #controlForm button, #tab-device input, #tab-device select, #tab-device button").forEach((el) => {
+        if (el.dataset.haWasDisabled === undefined) el.dataset.haWasDisabled = el.disabled ? "1" : "0";
+        el.disabled = isReplica || el.dataset.haWasDisabled === "1";
+      });
+      document.querySelectorAll("#tab-control .control-toolbar, #manualModePanel, #controlForm, #tab-device").forEach((el) => el.classList.toggle("ha-readonly", isReplica));
     } catch (err) {
       console.error(err);
     }

@@ -50,6 +50,12 @@ def create_app(
         static_folder=str(PACKAGE_DIR / "static"),
     )
     app.config["DEVICE_URL"] = (device_url or os.environ.get("LISA_PRO_URL") or DEFAULT_BASE_URL).rstrip("/")
+    ha_role = os.environ.get("LISA_PRO_HA_ROLE", "primary").strip().lower()
+    if ha_role not in {"primary", "replica"}:
+        raise ValueError("LISA_PRO_HA_ROLE must be 'primary' or 'replica'")
+    app.config["HA_ROLE"] = ha_role
+    app.config["HA_NODE_NAME"] = os.environ.get("LISA_PRO_HA_NAME", "OpenLisaPro")
+    app.config["HA_MASTER_URL"] = os.environ.get("LISA_PRO_HA_MASTER_URL", "").rstrip("/")
     data_path = Path(data_dir or DEFAULT_DATA_DIR)
     store = ConfigStore(data_path / "control.json")
     flow_events_path = data_path / "flow-events.json"
@@ -65,6 +71,59 @@ def create_app(
     app.config["FAN_CONTROLLER"] = controller
     update_cache = {"checked_at": 0.0, "latest_version": None, "error": None}
     update_cache_lock = threading.Lock()
+    ha_state = {"role": "primary" if ha_role == "primary" else "replica", "master_url": app.config["HA_MASTER_URL"], "master_healthy": ha_role == "primary", "last_check_at": None, "replica_last_seen": None}
+    ha_lock = threading.RLock()
+    ha_stop = threading.Event()
+    ha_thread = None
+
+    def ha_snapshot():
+        with ha_lock:
+            return deepcopy(ha_state)
+
+    def set_ha_role(role):
+        with ha_lock:
+            changed = ha_state["role"] != role
+            ha_state["role"] = role
+            ha_state["master_healthy"] = role == "replica" if ha_role == "replica" else True
+        if changed:
+            if role == "primary":
+                controller.start()
+            else:
+                controller.stop()
+
+    def check_master():
+        master_url = app.config["HA_MASTER_URL"]
+        if not master_url:
+            app.logger.error("Replica mode requires LISA_PRO_HA_MASTER_URL")
+            return False
+        healthy = False
+        try:
+            req = Request(f"{master_url}/api/ha/snapshot", headers={"Accept": "application/json"})
+            with urlopen(req, timeout=3) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            if payload.get("role") == "primary" and isinstance(payload.get("config"), dict):
+                store.replace(payload["config"])
+                healthy = True
+                heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps({"node_name": app.config["HA_NODE_NAME"]}).encode(), headers={"Content-Type": "application/json"}, method="POST")
+                with urlopen(heartbeat, timeout=3):
+                    pass
+        except Exception as exc:  # noqa: BLE001 — fail over when the master cannot be reached
+            app.logger.warning("HA master check failed: %s", exc)
+            healthy = False
+        with ha_lock:
+            ha_state["last_check_at"] = time.time()
+            ha_state["master_healthy"] = healthy
+        set_ha_role("replica" if healthy else "primary")
+        return healthy
+
+    def monitor_master():
+        if not app.config["HA_MASTER_URL"]:
+            check_master()
+            return
+        while not ha_stop.wait(5.0):
+            check_master()
+
+    app.config["HA_CHECK_MASTER"] = check_master
 
     def client() -> LisaProClient:
         return LisaProClient(app.config["DEVICE_URL"])
@@ -75,7 +134,35 @@ def create_app(
 
     @app.get("/api/meta")
     def meta():
-        return jsonify({"device_url": app.config["DEVICE_URL"]})
+        return jsonify({"device_url": app.config["DEVICE_URL"], "ha": ha_snapshot(), "node_name": app.config["HA_NODE_NAME"]})
+
+    @app.get("/api/ha/snapshot")
+    def ha_snapshot_route():
+        if ha_role != "primary":
+            return jsonify({"error": "This node is not the configured primary."}), 409
+        return jsonify({"role": "primary", "node_name": app.config["HA_NODE_NAME"], "config": store.get()})
+
+    @app.get("/api/ha")
+    def ha_status():
+        status = ha_snapshot()
+        seen = status.get("replica_last_seen")
+        status["replica_healthy"] = bool(seen and time.time() - seen < 15)
+        status.update(node_name=app.config["HA_NODE_NAME"], configured_role=ha_role)
+        return jsonify(status)
+
+    @app.post("/api/ha/heartbeat")
+    def ha_replica_heartbeat():
+        if ha_role != "primary":
+            return jsonify({"error": "This node is not the configured primary."}), 409
+        with ha_lock:
+            ha_state["replica_last_seen"] = time.time()
+        return jsonify({"ok": True})
+
+    @app.before_request
+    def enforce_replica_read_only():
+        if request.method == "POST" and request.path.startswith("/api/proxy/") and ha_snapshot()["role"] == "replica":
+            return jsonify({"error": "Device settings are read-only on a replica."}), 409
+        return None
 
     @app.get("/api/version")
     def version_status():
@@ -289,6 +376,8 @@ def create_app(
 
     @app.post("/api/control")
     def control_post():
+        if ha_snapshot()["role"] == "replica":
+            return jsonify({"error": "Settings are read-only on a replica."}), 409
         body = request.get_json(force=True, silent=True) or {}
         try:
             _validate_phase_schedules(body.get("phase_schedules"))
@@ -336,6 +425,8 @@ def create_app(
     @app.post("/api/control/reset")
     def control_reset():
         nonlocal led_status_pct
+        if ha_snapshot()["role"] == "replica":
+            return jsonify({"error": "Settings are read-only on a replica."}), 409
         try:
             with phase_write_lock:
                 with client() as c:
@@ -359,6 +450,8 @@ def create_app(
 
     @app.post("/api/control/reset-stage")
     def control_reset_stage():
+        if ha_snapshot()["role"] == "replica":
+            return jsonify({"error": "Settings are read-only on a replica."}), 409
         body = request.get_json(force=True, silent=True) or {}
         try:
             phase_id = int(body.get("phase_id"))
@@ -401,6 +494,8 @@ def create_app(
     @app.post("/api/control/seed-fans")
     def control_seed_fans():
         """Pull current device phase fan/LED settings into local overrides (if missing)."""
+        if ha_snapshot()["role"] == "replica":
+            return jsonify({"error": "Settings are read-only on a replica."}), 409
         try:
             with client() as c:
                 phases = c.get_phases().get("phases") or []
@@ -478,6 +573,8 @@ def create_app(
 
     @app.post("/api/proxy/phases")
     def proxy_set_phases():
+        if ha_snapshot()["role"] == "replica":
+            return jsonify({"error": "Device settings are read-only on a replica."}), 409
         try:
             with phase_write_lock:
                 with client() as c:
@@ -487,6 +584,8 @@ def create_app(
 
     @app.post("/api/proxy/phases/reset")
     def proxy_reset_phases():
+        if ha_snapshot()["role"] == "replica":
+            return jsonify({"error": "Device settings are read-only on a replica."}), 409
         try:
             with phase_write_lock:
                 with client() as c:
@@ -572,7 +671,12 @@ def create_app(
             return _err(exc)
 
     # Avoid double-start under Flask reloader parent process.
-    if start_controller and (
+    if start_controller and ha_role == "replica":
+        ha_thread = threading.Thread(target=monitor_master, name="ha-monitor", daemon=True)
+        ha_thread.start()
+        atexit.register(ha_stop.set)
+        atexit.register(controller.stop)
+    elif start_controller and (
         os.environ.get("WERKZEUG_RUN_MAIN") == "true" or os.environ.get("FLASK_DEBUG", "0") != "1"
     ):
         controller.start()

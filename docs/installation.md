@@ -52,5 +52,10 @@ The image runs as UID 10001. On startup, the entrypoint assigns the mounted data
 | `PORT` | `5050` | Web server port |
 | `FLASK_DEBUG` | `0` | Enable Flask debug mode when set to `1` |
 | `APP_VERSION` | Build-provided | Release version shown by the update indicator; Docker builds set this from `pyproject.toml` |
+| `LISA_PRO_HA_ROLE` | `primary` | Set to `replica` on the backup OpenLisaPro instance |
+| `LISA_PRO_HA_NAME` | `OpenLisaPro` | Name shown for this instance in the HA status banner |
+| `LISA_PRO_HA_MASTER_URL` | empty | Primary OpenLisaPro base URL; required on a replica (for example `http://192.168.1.51:5050`) |
+
+For one primary and one replica, configure both instances with the same `LISA_PRO_URL`. Set the primary's role to `primary` (the default), and set the replica's role and master URL as above. The replica fetches and persists the primary's control configuration every five seconds. When the primary health endpoint stops responding, the replica promotes itself and starts its control loop; when the primary responds again, it returns to replica mode. Keep each instance's data directory separate. Both instances need network access to the growbox, and the replica must be able to reach the primary on its OpenLisaPro port.
 
 Keep the app on a trusted network. It can change growbox settings and fan operation. See [Using local fan control](control.md) before enabling the controller.

@@ -71,6 +71,19 @@ def test_manual_control_settings_persist_and_percentages_are_clamped(tmp_path: P
     assert config["manual_led_pct"] == 0.0
 
 
+def test_replace_replaces_and_persists_upstream_snapshot(tmp_path: Path):
+    path = tmp_path / "control.json"
+    store = ConfigStore(path)
+    store.update({"enabled": False, "manual_fan_pct": 71})
+
+    result = store.replace({"enabled": True, "manual_fan_pct": 33, "pid": {"kp": 55}})
+
+    assert result["enabled"] is True
+    assert result["manual_fan_pct"] == 33.0
+    assert result["pid"]["kp"] == 55.0
+    assert ConfigStore(path).get() == result
+
+
 def test_seed_fan_limits_from_phases(tmp_path: Path):
     store = ConfigStore(tmp_path / "c.json")
     phases = [

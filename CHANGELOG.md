@@ -2,6 +2,14 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.30] - 2026-10-24
+
+### Added
+
+- Add primary and replica high availability with five-second configuration sync, health checks, and controller failover.
+- Show master and replica status and make replica settings read-only.
+- Add tests for HA config sync, read-only enforcement, and promotion and demotion.
+
 ## [0.1.29] - 2026-10-11
 
 ### Added
