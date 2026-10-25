@@ -1,5 +1,7 @@
 # OpenLisaPro
 
+English | [Deutsch](README.de.md)
+
 OpenLisaPro is a self-hosted Flask dashboard and Python client for Lisa Pro / LuminaGrowX growboxes. It displays live climate and device status, manages local control settings, and can run a VPD-based fan controller.
 
 The browser communicates with the local Flask app, which proxies requests to the growbox. Current local control settings remain in `control.json`. Sensor measurements, controller state, settings snapshots, and controller flow events are stored indefinitely in `openlisapro.sqlite3`. Existing `controller-history.jsonl` and `flow-events.json` data is imported once at startup and the legacy files are left untouched. The chart continues to show the latest 48 hours; the full dataset is available from `/api/data/export?format=jsonl` or `/api/data/export?format=csv`.
@@ -28,7 +30,7 @@ LISA_PRO_URL=http://192.168.1.50 uv run lisa-pro-ui
 
 ## High availability
 
-Run one OpenLisaPro primary and one replica, both connected to the same growbox. The replica syncs the primary's configuration every five seconds and keeps its settings read-only while the primary is healthy. If the primary becomes unreachable, the replica takes over the control loop; when the primary returns, the replica resumes read-only mode. The primary uses the default `LISA_PRO_HA_ROLE=primary`. Both instances need network access to the growbox, and the replica must be able to reach the primary. See [Installation and configuration](docs/installation.md) for all HA variables and deployment details.
+Run one OpenLisaPro primary and one replica, both connected to the same growbox. Every five seconds, the replica syncs the primary's configuration, SQLite measurements, flow events, and their settings snapshots. It keeps controls read-only while the primary is healthy. If the primary becomes unreachable, the replica takes over the control loop; when the primary returns, the replica resumes read-only mode. The primary uses the default `LISA_PRO_HA_ROLE=primary`. Both instances need network access to the growbox, and the replica must be able to reach the primary. See [Installation and configuration](docs/installation.md) for all HA variables and deployment details.
 
 Configure the replica with the same `LISA_PRO_URL`, a separate data directory, its replica role, and the primary's URL:
 
@@ -52,6 +54,14 @@ uv run lisa-pro-ui
 
 ## Screenshots
 
-![OpenLisaPro dashboard at desktop width](docs/screenshots/dashboard-desktop.png)
+### English
 
-![OpenLisaPro dashboard at mobile width](docs/screenshots/dashboard-mobile.png)
+![OpenLisaPro dashboard in English at desktop width](docs/screenshots/dashboard-desktop.png)
+
+![OpenLisaPro dashboard in English at mobile width](docs/screenshots/dashboard-mobile.png)
+
+### Deutsch
+
+![OpenLisaPro-Dashboard auf Deutsch in der Desktop-Ansicht](docs/screenshots/dashboard-desktop-de.png)
+
+![OpenLisaPro-Dashboard auf Deutsch in der mobilen Ansicht](docs/screenshots/dashboard-mobile-de.png)
