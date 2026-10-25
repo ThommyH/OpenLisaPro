@@ -60,7 +60,6 @@ class ConfigStore:
         self.path = path
         self._lock = threading.RLock()
         self._data = default_config()
-        self._legacy_vpd: dict[str, float] | None = None
         self.load()
 
     def load(self) -> dict[str, Any]:
@@ -71,10 +70,8 @@ class ConfigStore:
                     self._data = self._merge(default_config(), raw if isinstance(raw, dict) else {})
                 except (OSError, json.JSONDecodeError):
                     self._data = default_config()
-                    self._legacy_vpd = None
             else:
                 self._data = default_config()
-                self._legacy_vpd = None
             return deepcopy(self._data)
 
     def save(self) -> None:
@@ -92,7 +89,6 @@ class ConfigStore:
         """Restore local control settings to built-in defaults and persist them."""
         with self._lock:
             self._data = default_config()
-            self._legacy_vpd = None
             self.save()
             return deepcopy(self._data)
 
@@ -132,7 +128,6 @@ class ConfigStore:
         """Replace persisted settings with a normalized upstream snapshot."""
         with self._lock:
             self._data = self._merge(default_config(), config)
-            self._legacy_vpd = None
             self.save()
             return deepcopy(self._data)
 
@@ -143,11 +138,6 @@ class ConfigStore:
             limits = self._data.setdefault("fan_limits", {})
             led = self._data.setdefault("led", {})
             vpd = self._data.setdefault("vpd_targets", {})
-            legacy = self._legacy_vpd
-            if legacy:
-                self._legacy_vpd = None
-                changed = True
-
             for phase in phases or []:
                 phase_id = str(phase.get("id", 0))
                 settings = phase.get("settings") or {}
@@ -165,18 +155,12 @@ class ConfigStore:
                         }
                         changed = True
                     if mode not in vpd_bucket:
-                        if legacy:
-                            vpd_bucket[mode] = {
-                                "vpd_min": float(legacy["vpd_min"]),
-                                "vpd_max": float(legacy["vpd_max"]),
-                            }
-                        else:
-                            source_targets = vpd_bucket.get(source_mode) or {}
-                            lo = float(source_targets.get("vpd_min", m.get("vpd_min", 0.8)))
-                            hi = float(source_targets.get("vpd_max", m.get("vpd_max", 1.2)))
-                            if lo > hi:
-                                lo, hi = hi, lo
-                            vpd_bucket[mode] = {"vpd_min": lo, "vpd_max": hi}
+                        source_targets = vpd_bucket.get(source_mode) or {}
+                        lo = float(source_targets.get("vpd_min", m.get("vpd_min", 0.8)))
+                        hi = float(source_targets.get("vpd_max", m.get("vpd_max", 1.2)))
+                        if lo > hi:
+                            lo, hi = hi, lo
+                        vpd_bucket[mode] = {"vpd_min": lo, "vpd_max": hi}
                         changed = True
                     if mode in LED_MODES and mode not in led_bucket:
                         if mode in ("night", "night_silent"):
@@ -215,21 +199,12 @@ class ConfigStore:
         out["temperature_weight_pct_per_c"] = max(
             0.0, min(20.0, out["temperature_weight_pct_per_c"])
         )
-        # Migrate former built-in PID defaults. The old values were also the
-        # shipped settings and produced a weak response to large VPD errors.
-        if out["kp"] == 35.0:
-            out["kp"] = DEFAULT_PID["kp"]
-        if out["integral_limit"] == 40.0:
-            out["integral_limit"] = DEFAULT_PID["integral_limit"]
         return out
 
     @classmethod
     def _coerce_global_pid(cls, raw: dict[str, Any]) -> dict[str, Any]:
         if cls._is_flat_pid(raw):
             return cls._normalize_pid_values(raw)
-        for value in raw.values():
-            if isinstance(value, dict) and cls._is_flat_pid(value):
-                return cls._normalize_pid_values(value)
         return dict(DEFAULT_PID)
 
     @staticmethod
@@ -368,10 +343,8 @@ class ConfigStore:
 
     def _merge(self, base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
         out = deepcopy(base)
-        legacy_overwrite = patch.get("vpd_overwrite") if isinstance(patch.get("vpd_overwrite"), dict) else None
-
         for key, value in patch.items():
-            if key == "vpd_overwrite":
+            if key not in out:
                 continue
             if key == "pid" and isinstance(value, dict):
                 out["pid"] = deepcopy(value)
@@ -418,13 +391,5 @@ class ConfigStore:
         out["temperature_led_override"] = self._normalize_temperature_led_override(
             out.get("temperature_led_override")
         )
-
-        # Migrate legacy global overwrite → seed template for empty stages
-        if legacy_overwrite and legacy_overwrite.get("enabled") and not out["vpd_targets"]:
-            lo = float(legacy_overwrite.get("vpd_min", 1.0))
-            hi = float(legacy_overwrite.get("vpd_max", 1.2))
-            if lo > hi:
-                lo, hi = hi, lo
-            self._legacy_vpd = {"vpd_min": lo, "vpd_max": hi}
 
         return out

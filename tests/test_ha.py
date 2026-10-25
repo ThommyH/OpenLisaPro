@@ -87,8 +87,10 @@ def test_replica_syncs_primary_and_promotes_then_demotes(tmp_path, monkeypatch):
     monkeypatch.setattr("lisa_pro_ui.app.urlopen", healthy_urlopen)
     assert app.config["HA_CHECK_MASTER"]() is True
     assert app.config["CONTROL_STORE"].get()["manual_fan_pct"] == 27.0
-    assert requested_urls == ["http://master:5050/api/ha/snapshot", "http://master:5050/api/ha/heartbeat"]
-    heartbeat_payload = json.loads(healthy_requests[1].data.decode())
+    assert requested_urls[0] == "http://master:5050/api/ha/snapshot"
+    assert requested_urls[1].startswith("http://master:5050/api/ha/events?")
+    assert requested_urls[2] == "http://master:5050/api/ha/heartbeat"
+    heartbeat_payload = json.loads(healthy_requests[2].data.decode())
     assert heartbeat_payload == {"node_name": "OpenLisaPro", "node_url": "http://192.168.178.142:5050"}
     assert app.test_client().get("/api/ha").get_json()["role"] == "replica"
 

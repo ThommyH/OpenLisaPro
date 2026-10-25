@@ -105,27 +105,6 @@ def test_seed_fan_limits_from_phases(tmp_path: Path):
     assert store.get()["fan_limits"]["0"]["day"]["fan_min"] == 22.0
 
 
-def test_migrate_per_stage_pid_to_global(tmp_path: Path):
-    path = tmp_path / "control.json"
-    path.write_text(
-        json.dumps(
-            {
-                "enabled": False,
-                "pid": {
-                    "0": {"kp": 11, "ki": 0.5, "kd": 2},
-                    "1": {"kp": 99, "ki": 1, "kd": 3},
-                },
-                "fan_limits": {},
-                "vpd_overwrite": {"enabled": False, "vpd_min": 1.0, "vpd_max": 1.2},
-            }
-        ),
-        encoding="utf-8",
-    )
-    cfg = ConfigStore(path).get()
-    assert cfg["pid"]["kp"] == 11.0
-    assert "0" not in cfg["pid"]
-
-
 def test_update_accepts_flat_global_pid(tmp_path: Path):
     store = ConfigStore(tmp_path / "c.json")
     store.update({"pid": {"kp": 12.5, "ramp_pct_per_min": 2.5}})

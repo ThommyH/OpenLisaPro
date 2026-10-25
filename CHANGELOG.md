@@ -26,7 +26,7 @@ Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 ### Added
 
 - Store controller measurements, full device status, controller state, settings snapshots, and flow events in SQLite without automatic expiry.
-- Import existing controller and flow history JSON files once and expose full-history JSON Lines and CSV exports.
+- Expose full-history JSON Lines and CSV exports.
 
 ### Changed
 
@@ -144,7 +144,7 @@ Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
 ### Added
 
-- Persist controller flow changes for 14 days and browse them 20 entries per page.
+- Persist controller flow changes and browse them 20 entries per page.
 - Show the fan target before and after a change, the percentage-point difference, the temperature boost, and the current command when available.
 
 ### Changed

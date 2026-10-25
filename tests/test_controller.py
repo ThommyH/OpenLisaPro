@@ -1,5 +1,4 @@
 from copy import deepcopy
-import json
 import time
 
 from lisa_pro_ui.controller import FanPidController
@@ -210,52 +209,6 @@ def make_temperature_controller(tmp_path):
         store=store,
         client_factory=TemperatureProtectionClient,
     )
-
-
-def test_controller_history_persists_and_expires_after_two_days(tmp_path):
-    history_path = tmp_path / "controller-history.jsonl"
-    store = ConfigStore(tmp_path / "control.json")
-    now = time.time()
-    history_path.write_text(
-        json.dumps({"t": now - 3 * 24 * 60 * 60, "fan_command": 10})
-        + "\n"
-        + json.dumps({"t": now - 60, "fan_command": 42})
-        + "\n",
-        encoding="utf-8",
-    )
-
-    controller = FanPidController(
-        device_url="http://unused",
-        store=store,
-        history_path=history_path,
-        client_factory=TemperatureProtectionClient,
-    )
-
-    assert [point["fan_command"] for point in controller.history()] == [42]
-    assert len(history_path.read_text(encoding="utf-8").splitlines()) == 1
-
-
-def test_controller_history_appends_samples_for_next_startup(tmp_path):
-    history_path = tmp_path / "controller-history.jsonl"
-    store = ConfigStore(tmp_path / "control.json")
-    controller = FanPidController(
-        device_url="http://unused",
-        store=store,
-        history_path=history_path,
-        client_factory=TemperatureProtectionClient,
-    )
-    controller._state.update({"fan_command": 37, "vpd_inside": 1.1, "mode": "day"})
-    controller._append_history(time.time())
-
-    restored = FanPidController(
-        device_url="http://unused",
-        store=store,
-        history_path=history_path,
-        client_factory=TemperatureProtectionClient,
-    )
-
-    assert restored.history()[0]["fan_command"] == 37
-    assert restored.history()[0]["vpd_inside"] == 1.1
 
 
 def test_over_temperature_commands_stage_max_fan(tmp_path):

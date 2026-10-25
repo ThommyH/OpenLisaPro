@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import logging
-import json
 import threading
 import time
 from collections import deque
 from copy import deepcopy
 from datetime import datetime, time as datetime_time
-from pathlib import Path
 from typing import Any, Callable, Optional
 
 from lisa_pro_ui.client import LisaProClient, LisaProError
@@ -48,14 +46,12 @@ class FanPidController:
         *,
         device_url: str,
         store: ConfigStore,
-        history_path: Optional[Path] = None,
         telemetry_store: Optional[TelemetryStore] = None,
         client_factory: Optional[Callable[[], LisaProClient]] = None,
         phase_write_lock: Optional[threading.RLock] = None,
     ) -> None:
         self.device_url = device_url.rstrip("/")
         self.store = store
-        self._history_path = Path(history_path) if history_path is not None else None
         self._telemetry_store = telemetry_store
         self._client_factory = client_factory or (lambda: LisaProClient(self.device_url))
         self._phase_write_lock = phase_write_lock or threading.RLock()
@@ -65,7 +61,6 @@ class FanPidController:
         self._thread: Optional[threading.Thread] = None
         self._pid = PIDController(output_min=-100.0, output_max=100.0)
         self._history: deque[dict[str, Any]] = deque(maxlen=HISTORY_MAX)
-        self._last_history_prune = 0.0
         self._load_history()
         self._state: dict[str, Any] = {
             "running": False,
@@ -1081,20 +1076,6 @@ class FanPidController:
                 )
             except Exception:  # noqa: BLE001 — a storage failure must not stop hardware control
                 log.exception("Unable to persist telemetry measurement")
-            return
-        if self._history_path is None:
-            return
-        try:
-            self._history_path.parent.mkdir(parents=True, exist_ok=True)
-            with self._history_path.open("a", encoding="utf-8") as history_file:
-                history_file.write(json.dumps(point, separators=(",", ":")) + "\n")
-            if now - self._last_history_prune >= 3600:
-                if self._history and float(self._history[0].get("t", now)) < now - HISTORY_RETENTION_S:
-                    self._prune_history_file(now)
-                else:
-                    self._last_history_prune = now
-        except OSError:
-            log.exception("Unable to persist controller history")
 
     def _load_history(self) -> None:
         if self._telemetry_store is not None:
@@ -1108,35 +1089,6 @@ class FanPidController:
             except Exception:  # noqa: BLE001 — retain controller availability if chart loading fails
                 log.exception("Unable to load controller history from SQLite")
             return
-        if self._history_path is None or not self._history_path.exists():
-            return
-        cutoff = time.time() - HISTORY_RETENTION_S
-        try:
-            retained = []
-            with self._history_path.open("r", encoding="utf-8") as history_file:
-                for line in history_file:
-                    try:
-                        point = json.loads(line)
-                        if isinstance(point, dict) and float(point.get("t", 0)) >= cutoff:
-                            retained.append(point)
-                    except (TypeError, ValueError, json.JSONDecodeError):
-                        continue
-            self._history.extend(retained[-HISTORY_MAX:])
-            self._prune_history_file(time.time(), points=list(self._history))
-        except OSError:
-            log.exception("Unable to load controller history")
-
-    def _prune_history_file(self, now: float, *, points: Optional[list[dict[str, Any]]] = None) -> None:
-        if self._history_path is None:
-            return
-        cutoff = now - HISTORY_RETENTION_S
-        retained = [p for p in (points if points is not None else list(self._history)) if float(p.get("t", 0)) >= cutoff]
-        temporary = self._history_path.with_suffix(self._history_path.suffix + ".tmp")
-        with temporary.open("w", encoding="utf-8") as history_file:
-            for point in retained:
-                history_file.write(json.dumps(point, separators=(",", ":")) + "\n")
-        temporary.replace(self._history_path)
-        self._last_history_prune = now
 
     @staticmethod
     def _resolve_mode(

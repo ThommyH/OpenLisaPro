@@ -4,16 +4,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import math
 import sqlite3
 import threading
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
-
-log = logging.getLogger(__name__)
-
 
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
@@ -91,8 +87,7 @@ class TelemetryStore:
                     mode TEXT,
                     device_json TEXT NOT NULL,
                     controller_json TEXT NOT NULL,
-                    chart_json TEXT NOT NULL,
-                    is_legacy INTEGER NOT NULL DEFAULT 0
+                    chart_json TEXT NOT NULL
                 );
 
                 CREATE INDEX IF NOT EXISTS measurements_sampled_at_idx
@@ -105,16 +100,10 @@ class TelemetryStore:
                     source_key TEXT UNIQUE,
                     occurred_at_ms INTEGER NOT NULL,
                     settings_snapshot_id INTEGER REFERENCES settings_snapshots(id),
-                    event_json TEXT NOT NULL,
-                    is_legacy INTEGER NOT NULL DEFAULT 0
+                    event_json TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS flow_events_occurred_at_idx
                     ON flow_events(occurred_at_ms DESC, id DESC);
-
-                CREATE TABLE IF NOT EXISTS migrations (
-                    name TEXT PRIMARY KEY,
-                    completed_at REAL NOT NULL
-                );
 
                 CREATE TABLE IF NOT EXISTS replication_state (
                     primary_url TEXT PRIMARY KEY,
@@ -123,12 +112,6 @@ class TelemetryStore:
                 );
                 """
             )
-            for table in ("measurements", "flow_events"):
-                columns = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
-                if "source_key" not in columns:
-                    connection.execute(f"ALTER TABLE {table} ADD COLUMN source_key TEXT")
-                    connection.execute(f"CREATE UNIQUE INDEX {table}_source_key_idx ON {table}(source_key)")
-
     def replication_cursor(self, primary_url: str) -> tuple[int, int]:
         with self._connection() as connection:
             row = connection.execute(
@@ -167,7 +150,7 @@ class TelemetryStore:
         }
 
     def import_replication_batch(
-        self, primary_url: str, payload: dict[str, Any], *, cursor_key: str | None = None
+        self, primary_url: str, payload: dict[str, Any]
     ) -> None:
         measurements = payload.get("measurements", [])
         events = payload.get("flow_events", [])
@@ -186,8 +169,8 @@ class TelemetryStore:
                        source_key, sampled_at, settings_snapshot_id, temp_inside_c, humidity_inside_rh,
                        dew_point_inside_c, temp_outside_c, humidity_outside_rh, dew_point_outside_c,
                        vpd_inside_kpa, vpd_outside_kpa, fan_actual_pct, fan_command_pct, phase_id, mode,
-                       device_json, controller_json, chart_json, is_legacy)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       device_json, controller_json, chart_json)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (source_key, float(item.get("t", 0)), snapshot_id,
                      _number(metrics.get("temp_inside_c")), _number(metrics.get("humidity_inside_rh")),
                      _number(metrics.get("dew_point_inside_c")), _number(metrics.get("temp_outside_c")),
@@ -195,7 +178,7 @@ class TelemetryStore:
                      _number(metrics.get("vpd_inside_kpa")), _number(metrics.get("vpd_outside_kpa")),
                      _number(metrics.get("fan_actual_pct")), _number(metrics.get("fan_command_pct")),
                      metrics.get("phase_id"), metrics.get("mode"), _json(item.get("device") or {}),
-                     _json(item.get("controller") or {}), _json(item.get("chart") or {}), int(bool(item.get("legacy"))))
+                     _json(item.get("controller") or {}), _json(item.get("chart") or {}))
                 )
             for item in events:
                 if not isinstance(item, dict) or not isinstance(item.get("id"), int) or not isinstance(item.get("event"), dict):
@@ -214,7 +197,7 @@ class TelemetryStore:
                 """INSERT INTO replication_state(primary_url, measurement_id, flow_event_id) VALUES(?,?,?)
                    ON CONFLICT(primary_url) DO UPDATE SET measurement_id=MAX(measurement_id, excluded.measurement_id),
                    flow_event_id=MAX(flow_event_id, excluded.flow_event_id)""",
-                (cursor_key or primary_url, int(payload.get("measurement_cursor", 0)), int(payload.get("flow_event_cursor", 0))),
+                (primary_url, int(payload.get("measurement_cursor", 0)), int(payload.get("flow_event_cursor", 0))),
             )
 
     @staticmethod
@@ -248,7 +231,6 @@ class TelemetryStore:
         controller: dict[str, Any],
         chart: dict[str, Any],
         settings: dict[str, Any] | None,
-        legacy: bool = False,
     ) -> None:
         snapshot_id = cls._snapshot_id(connection, sampled_at, settings)
         connection.execute(
@@ -258,8 +240,8 @@ class TelemetryStore:
                 temp_inside_c, humidity_inside_rh, dew_point_inside_c,
                 temp_outside_c, humidity_outside_rh, dew_point_outside_c,
                 vpd_inside_kpa, vpd_outside_kpa, fan_actual_pct, fan_command_pct,
-                phase_id, mode, device_json, controller_json, chart_json, is_legacy
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                phase_id, mode, device_json, controller_json, chart_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 sampled_at,
@@ -279,7 +261,6 @@ class TelemetryStore:
                 _json(device),
                 _json(controller),
                 _json(chart),
-                int(legacy),
             ),
         )
 
@@ -373,7 +354,6 @@ class TelemetryStore:
             "controller": json.loads(row["controller_json"]),
             "chart": json.loads(row["chart_json"]),
             "settings": json.loads(row["settings_json"]) if row["settings_json"] is not None else None,
-            "legacy": bool(row["is_legacy"]),
         }
 
     @staticmethod
@@ -427,63 +407,3 @@ class TelemetryStore:
                 yield self._decode_measurement(row)
         finally:
             connection.close()
-
-    def migrate_legacy_files(self, *, history_path: Path, flow_events_path: Path) -> None:
-        """Import existing JSON histories once, without deleting the source files."""
-        if history_path.is_file():
-            try:
-                with self._lock, self._connection() as connection:
-                    if not connection.execute(
-                        "SELECT 1 FROM migrations WHERE name = ?", ("controller-history-jsonl",)
-                    ).fetchone():
-                        with history_path.open("r", encoding="utf-8") as source:
-                            for line in source:
-                                try:
-                                    point = json.loads(line)
-                                    sampled_at = _number(point.get("t")) if isinstance(point, dict) else None
-                                    if sampled_at is None:
-                                        continue
-                                    self._insert_measurement(
-                                        connection,
-                                        sampled_at=sampled_at,
-                                        device={},
-                                        controller=point,
-                                        chart=point,
-                                        settings=None,
-                                        legacy=True,
-                                    )
-                                except (TypeError, ValueError, json.JSONDecodeError):
-                                    continue
-                        connection.execute(
-                            "INSERT INTO migrations(name, completed_at) VALUES (?, strftime('%s','now'))",
-                            ("controller-history-jsonl",),
-                        )
-            except OSError:
-                log.exception("Could not migrate legacy controller history")
-
-        if flow_events_path.is_file():
-            try:
-                payload = json.loads(flow_events_path.read_text(encoding="utf-8"))
-                events = payload.get("events", []) if isinstance(payload, dict) else []
-                if not isinstance(events, list):
-                    events = []
-                with self._lock, self._connection() as connection:
-                    if not connection.execute(
-                        "SELECT 1 FROM migrations WHERE name = ?", ("flow-events-json",)
-                    ).fetchone():
-                        for event in events:
-                            if not isinstance(event, dict):
-                                continue
-                            at = _number(event.get("at"))
-                            if at is None:
-                                continue
-                            connection.execute(
-                                "INSERT INTO flow_events(occurred_at_ms, event_json, is_legacy) VALUES (?, ?, 1)",
-                                (int(at), _json(event)),
-                            )
-                        connection.execute(
-                            "INSERT INTO migrations(name, completed_at) VALUES (?, strftime('%s','now'))",
-                            ("flow-events-json",),
-                        )
-            except (OSError, json.JSONDecodeError, sqlite3.Error):
-                log.exception("Could not migrate legacy flow events")
