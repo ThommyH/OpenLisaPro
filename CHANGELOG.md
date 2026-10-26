@@ -2,6 +2,16 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.39] - 2026-10-26
+
+### Changed
+
+- Show the active day/night period in a larger, separate dashboard field.
+
+### Fixed
+
+- Keep the schedule-based day/night indicator stable when the device briefly reports its LED as off at 0% output.
+
 ## [0.1.38] - 2026-10-24
 
 ### Fixed

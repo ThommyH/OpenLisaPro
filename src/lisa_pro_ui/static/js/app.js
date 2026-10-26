@@ -22,6 +22,7 @@
     flowTotalPages: 1,
     lastFlowSignature: null,
     lastTemperatureAdjustmentPct: null,
+    lastScheduledIsDay: null,
   };
 
   const MODE_LABELS = {
@@ -198,7 +199,11 @@
     const growOn = !!(s.grow && s.grow.started);
     const dryOn = !!(s.drying && s.drying.active);
     const phase = (s.grow && s.grow.phase) || (dryOn ? "Trocknung" : "Idle");
+    const activeStage = currentStagePhase();
+    const isDay = isDayForPhase(activeStage);
     $("phaseTag").textContent = phase;
+    $("dayPeriod").textContent = isDay ? "DAY" : "NIGHT";
+    $("dayPeriodField").dataset.period = isDay ? "day" : "night";
     if (growOn) {
       $("heroTitle").textContent = `Day ${s.grow.day} of ${s.grow.total_days}`;
       $("heroSub").textContent = `${s.seed || "Crop"} · canopy climate under active control.`;
@@ -248,7 +253,7 @@
     return null;
   }
 
-  function updateDayTheme(phase) {
+  function isDayForPhase(phase) {
     const schedule = (phase && phase.schedule) || {};
     const parseMinutes = (value) => {
       const match = typeof value === "string" && value.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
@@ -263,10 +268,19 @@
       const browserTime = new Date();
       const now = timeMatch ? Number(timeMatch[1]) * 60 + Number(timeMatch[2]) : browserTime.getHours() * 60 + browserTime.getMinutes();
       isDay = start === end || (start < end ? now >= start && now < end : now >= start || now < end);
+      state.lastScheduledIsDay = isDay;
+    } else if (state.status?.grow?.started && state.lastScheduledIsDay != null) {
+      // A 0% LED command can briefly make the device report its light as off.
+      // Keep the schedule-derived period while active-stage data is temporarily missing.
+      isDay = state.lastScheduledIsDay;
     } else {
       isDay = !!(state.status && state.status.light_on);
     }
-    document.body.classList.toggle("day-mode", isDay);
+    return isDay;
+  }
+
+  function updateDayTheme(phase) {
+    document.body.classList.toggle("day-mode", isDayForPhase(phase));
   }
 
   function updateCurrentStageCard() {

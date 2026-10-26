@@ -265,6 +265,40 @@ main > * { width: 100%; min-width: 0; max-width: 100%; }
   text-transform: uppercase;
 }
 
+.day-period {
+  display: flex;
+  width: fit-content;
+  min-width: 9.5rem;
+  flex-direction: column;
+  gap: 0.05rem;
+  margin: 0 0 1rem;
+  padding: 0.45rem 1rem 0.55rem;
+  border: 1px solid rgba(184, 242, 85, 0.45);
+  border-radius: 0.8rem;
+  background: rgba(184, 242, 85, 0.1);
+  color: var(--leaf);
+}
+
+.day-period[data-period="night"] {
+  border-color: rgba(126, 200, 255, 0.4);
+  background: rgba(126, 200, 255, 0.1);
+  color: #a8d9ff;
+}
+
+.day-period-caption {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  opacity: 0.8;
+}
+
+.day-period strong {
+  font-family: var(--font-display);
+  font-size: clamp(1.65rem, 3vw, 2.25rem);
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
 .hero-title {
   margin: 0;
   font-family: var(--font-display);
