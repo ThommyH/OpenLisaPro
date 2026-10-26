@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.40] - 2026-10-26
+
+### Fixed
+
+- Use the controller's stable Day/Night mode for the dashboard indicator, avoiding flicker when LED output is 0%.
+
 ## [0.1.39] - 2026-10-26
 
 ### Changed

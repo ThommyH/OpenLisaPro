@@ -254,6 +254,11 @@
   }
 
   function isDayForPhase(phase) {
+    const mode = state.control?.state?.mode;
+    if (["day", "day_silent", "night", "night_silent"].includes(mode)) {
+      return mode === "day" || mode === "day_silent";
+    }
+
     const schedule = (phase && phase.schedule) || {};
     const parseMinutes = (value) => {
       const match = typeof value === "string" && value.match(/^([01]\d|2[0-3]):([0-5]\d)$/);
@@ -281,6 +286,12 @@
 
   function updateDayTheme(phase) {
     document.body.classList.toggle("day-mode", isDayForPhase(phase));
+  }
+
+  function updateDayPeriod() {
+    const isDay = isDayForPhase(currentStagePhase());
+    $("dayPeriod").textContent = isDay ? "DAY" : "NIGHT";
+    $("dayPeriodField").dataset.period = isDay ? "day" : "night";
   }
 
   function updateCurrentStageCard() {
@@ -655,6 +666,7 @@
     const cfg = snap.config || {};
     const st = snap.state || {};
     updateControlLive(st, cfg.enabled, cfg.manual_mode);
+    updateDayPeriod();
 
     if (snap.history) {
       mergeHistory(snap.history);
