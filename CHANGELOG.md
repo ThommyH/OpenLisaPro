@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.47] - 2026-10-26
+
+### Changed
+
+- Compress telemetry JSON values when compression makes them smaller, and omit the unused measurement settings index in new databases.
+
 ## [0.1.46] - 2026-10-26
 
 ### Changed

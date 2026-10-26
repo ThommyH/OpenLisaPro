@@ -7,12 +7,32 @@ import json
 import math
 import sqlite3
 import threading
+import zlib
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
+_COMPRESSED_JSON_PREFIX = b"ZJ1\0"
+
+
 def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def _stored_json(value: Any) -> str | bytes:
+    """Store compact JSON, compressing it only when that saves bytes."""
+    encoded = _json(value).encode("utf-8")
+    compressed = _COMPRESSED_JSON_PREFIX + zlib.compress(encoded, level=6)
+    return compressed if len(compressed) < len(encoded) else encoded.decode("utf-8")
+
+
+def _read_json(value: str | bytes) -> Any:
+    """Read plain JSON rows and compressed rows written by this version."""
+    if isinstance(value, bytes):
+        if value.startswith(_COMPRESSED_JSON_PREFIX):
+            value = zlib.decompress(value[len(_COMPRESSED_JSON_PREFIX):])
+        value = value.decode("utf-8")
+    return json.loads(value)
 
 
 def _number(value: Any) -> float | None:
@@ -80,7 +100,7 @@ class TelemetryStore:
                     id INTEGER PRIMARY KEY,
                     captured_at REAL NOT NULL,
                     config_hash TEXT NOT NULL,
-                    config_json TEXT NOT NULL
+                    config_json BLOB NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS measurements (
@@ -100,23 +120,20 @@ class TelemetryStore:
                     fan_command_pct REAL,
                     phase_id TEXT,
                     mode TEXT,
-                    device_json TEXT NOT NULL,
-                    controller_json TEXT NOT NULL,
-                    chart_json TEXT NOT NULL,
+                    device_json BLOB NOT NULL,
+                    controller_json BLOB NOT NULL,
+                    chart_json BLOB NOT NULL,
                     is_legacy INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE INDEX IF NOT EXISTS measurements_sampled_at_idx
                     ON measurements(sampled_at, id);
-                CREATE INDEX IF NOT EXISTS measurements_settings_idx
-                    ON measurements(settings_snapshot_id);
-
                 CREATE TABLE IF NOT EXISTS flow_events (
                     id INTEGER PRIMARY KEY,
                     source_key TEXT UNIQUE,
                     occurred_at_ms INTEGER NOT NULL,
                     settings_snapshot_id INTEGER REFERENCES settings_snapshots(id),
-                    event_json TEXT NOT NULL
+                    event_json BLOB NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS flow_events_occurred_at_idx
                     ON flow_events(occurred_at_ms DESC, id DESC);
@@ -163,8 +180,8 @@ class TelemetryStore:
         for row in event_rows:
             events.append({
                 "id": int(row["id"]),
-                "event": json.loads(row["event_json"]),
-                "settings": json.loads(row["settings_json"]) if row["settings_json"] else None,
+                "event": _read_json(row["event_json"]),
+                "settings": _read_json(row["settings_json"]) if row["settings_json"] else None,
             })
         return {
             "measurements": measurements,
@@ -211,7 +228,7 @@ class TelemetryStore:
                      _first_number(metrics.get("fan_command_pct"), controller.get("fan_command"), chart.get("fan_command")),
                      _first_text(metrics.get("phase_id"), controller.get("phase_id"), chart.get("phase_id")),
                      _first_text(metrics.get("mode"), controller.get("mode"), chart.get("mode")),
-                     _json(device), _json(controller), _json(chart),
+                     _stored_json(device), _stored_json(controller), _stored_json(chart),
                      int(bool(item.get("legacy"))))
                 )
             for item in events:
@@ -225,7 +242,7 @@ class TelemetryStore:
                 snapshot_id = self._snapshot_id(connection, float(event.get("at", 0)) / 1000, item.get("settings"))
                 connection.execute(
                     "INSERT INTO flow_events(source_key, occurred_at_ms, settings_snapshot_id, event_json) VALUES(?,?,?,?)",
-                    (source_key, int(event.get("at", 0)), snapshot_id, _json(event)),
+                    (source_key, int(event.get("at", 0)), snapshot_id, _stored_json(event)),
                 )
             connection.execute(
                 """INSERT INTO replication_state(primary_url, measurement_id, flow_event_id) VALUES(?,?,?)
@@ -251,7 +268,7 @@ class TelemetryStore:
             return int(current["id"])
         cursor = connection.execute(
             "INSERT INTO settings_snapshots(captured_at, config_hash, config_json) VALUES (?, ?, ?)",
-            (captured_at, config_hash, config_json),
+            (captured_at, config_hash, _stored_json(settings)),
         )
         return int(cursor.lastrowid)
 
@@ -292,9 +309,9 @@ class TelemetryStore:
                 _first_number(controller.get("fan_command"), chart.get("fan_command")),
                 _first_text(controller.get("phase_id"), chart.get("phase_id")),
                 _first_text(controller.get("mode"), chart.get("mode")),
-                _json(device),
-                _json(controller),
-                _json(chart),
+                _stored_json(device),
+                _stored_json(controller),
+                _stored_json(chart),
             ),
         )
 
@@ -323,7 +340,7 @@ class TelemetryStore:
             snapshot_id = self._snapshot_id(connection, occurred_at_ms / 1000.0, settings)
             cursor = connection.execute(
                 "INSERT INTO flow_events(occurred_at_ms, settings_snapshot_id, event_json) VALUES (?, ?, ?)",
-                (occurred_at_ms, snapshot_id, _json(event)),
+                (occurred_at_ms, snapshot_id, _stored_json(event)),
             )
             return int(cursor.lastrowid)
 
@@ -344,8 +361,8 @@ class TelemetryStore:
             ).fetchall()
         events = []
         for row in rows:
-            event = json.loads(row["event_json"])
-            event["settings"] = json.loads(row["settings_json"]) if row["settings_json"] is not None else None
+            event = _read_json(row["event_json"])
+            event["settings"] = _read_json(row["settings_json"]) if row["settings_json"] is not None else None
             events.append(event)
         return events
 
@@ -363,7 +380,7 @@ class TelemetryStore:
                 """,
                 (cutoff, limit),
             ).fetchall()
-        return [json.loads(row["chart_json"]) for row in rows]
+        return [_read_json(row["chart_json"]) for row in rows]
 
     @staticmethod
     def _decode_measurement(row: sqlite3.Row) -> dict[str, Any]:
@@ -384,10 +401,10 @@ class TelemetryStore:
                 "phase_id": row["phase_id"],
                 "mode": row["mode"],
             },
-            "device": json.loads(row["device_json"]),
-            "controller": json.loads(row["controller_json"]),
-            "chart": json.loads(row["chart_json"]),
-            "settings": json.loads(row["settings_json"]) if row["settings_json"] is not None else None,
+            "device": _read_json(row["device_json"]),
+            "controller": _read_json(row["controller_json"]),
+            "chart": _read_json(row["chart_json"]),
+            "settings": _read_json(row["settings_json"]) if row["settings_json"] is not None else None,
             "legacy": bool(row["is_legacy"]) if "is_legacy" in row.keys() else False,
         }
 
