@@ -2,6 +2,16 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.46] - 2026-10-26
+
+### Changed
+
+- Explain that preparing large compressed exports can take a moment.
+
+### Fixed
+
+- Set ZIP entry timestamps to the time the export is generated instead of the ZIP format's default date.
+
 ## [0.1.45] - 2026-10-26
 
 ### Changed

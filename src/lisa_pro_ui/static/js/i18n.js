@@ -166,6 +166,7 @@
       "Recent fan and climate readings · full history saved in SQLite": "Letzte Lüfter- und Klimamesswerte · der vollständige Verlauf ist in SQLite gespeichert",
       "Download JSON Lines": "JSON-Lines herunterladen",
       "Download CSV": "CSV herunterladen",
+      "Large exports are compressed into a ZIP and may take a moment to prepare": "Große Exporte werden als ZIP komprimiert. Das kann einen Moment dauern.",
       "Chart time range": "Zeitraum des Diagramms",
       "Show or hide chart lines": "Diagrammlinien ein- oder ausblenden",
       "Zoom and move through chart history": "Verlauf vergrößern und verschieben",

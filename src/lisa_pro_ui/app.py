@@ -466,7 +466,9 @@ def create_app(
             with zipfile.ZipFile(
                 archive, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=6
             ) as zipped:
-                with zipped.open(entry_name, mode="w", force_zip64=True) as entry:
+                archive_entry = zipfile.ZipInfo(entry_name, date_time=time.localtime()[:6])
+                archive_entry.compress_type = zipfile.ZIP_DEFLATED
+                with zipped.open(archive_entry, mode="w", force_zip64=True) as entry:
                     for chunk in chunks:
                         entry.write(chunk.encode("utf-8"))
             archive_size = archive.tell()
