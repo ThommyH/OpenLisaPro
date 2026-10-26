@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import csv
+import gzip
 import io
 import json
 import math
@@ -28,6 +29,31 @@ from lisa_pro_ui.telemetry import TelemetryStore
 PACKAGE_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = Path(os.environ.get("LISA_PRO_DATA", PACKAGE_DIR.parent.parent / "data"))
 FLOW_EVENT_PAGE_SIZE = 20
+
+
+def _gzip_chunks(chunks):
+    """Compress text chunks as one bounded-memory gzip stream."""
+    buffer = io.BytesIO()
+    compressor = gzip.GzipFile(fileobj=buffer, mode="wb", mtime=0)
+    pending = bytearray()
+    try:
+        for chunk in chunks:
+            pending.extend(chunk.encode("utf-8"))
+            while len(pending) >= 64 * 1024:
+                compressor.write(pending[: 64 * 1024])
+                del pending[: 64 * 1024]
+                compressor.flush()
+                yield buffer.getvalue()
+                buffer.seek(0)
+                buffer.truncate(0)
+        if pending:
+            compressor.write(pending)
+        compressor.close()
+        remaining = buffer.getvalue()
+        if remaining:
+            yield remaining
+    finally:
+        compressor.close()
 
 
 def _release_version_key(value: object) -> tuple[tuple[int, ...], int, str] | None:
@@ -422,9 +448,9 @@ def create_app(
                     yield json.dumps(record, separators=(",", ":"), allow_nan=False) + "\n"
 
             return Response(
-                stream_with_context(jsonl_rows()),
-                mimetype="application/x-ndjson",
-                headers={"Content-Disposition": "attachment; filename=openlisapro-measurements.jsonl"},
+                stream_with_context(_gzip_chunks(jsonl_rows())),
+                mimetype="application/gzip",
+                headers={"Content-Disposition": "attachment; filename=openlisapro-measurements.jsonl.gz"},
             )
 
         def csv_rows():
@@ -456,9 +482,9 @@ def create_app(
                 buffer.truncate(0)
 
         return Response(
-            stream_with_context(csv_rows()),
-            mimetype="text/csv",
-            headers={"Content-Disposition": "attachment; filename=openlisapro-measurements.csv"},
+            stream_with_context(_gzip_chunks(csv_rows())),
+            mimetype="application/gzip",
+            headers={"Content-Disposition": "attachment; filename=openlisapro-measurements.csv.gz"},
         )
 
     @app.post("/api/proxy/silent/toggle")

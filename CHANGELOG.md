@@ -2,6 +2,14 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.42] - 2026-10-26
+
+### Changed
+
+- Download measurement exports as gzip-compressed JSON Lines and CSV files.
+- Mark legacy chart-only measurements in exports and preserve that marker during replication.
+- Fall back to available controller or chart values when device metrics are null.
+
 ## [0.1.41] - 2026-10-26
 
 ### Changed

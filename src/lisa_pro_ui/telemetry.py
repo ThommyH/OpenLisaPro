@@ -25,6 +25,21 @@ def _number(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
+def _first_number(*values: Any) -> float | None:
+    for value in values:
+        number = _number(value)
+        if number is not None:
+            return number
+    return None
+
+
+def _first_text(*values: Any) -> str | None:
+    for value in values:
+        if value is not None and str(value).strip():
+            return str(value)
+    return None
+
+
 class TelemetryStore:
     """SQLite storage for all new measurements and controller flow events.
 
@@ -87,7 +102,8 @@ class TelemetryStore:
                     mode TEXT,
                     device_json TEXT NOT NULL,
                     controller_json TEXT NOT NULL,
-                    chart_json TEXT NOT NULL
+                    chart_json TEXT NOT NULL,
+                    is_legacy INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE INDEX IF NOT EXISTS measurements_sampled_at_idx
@@ -112,6 +128,14 @@ class TelemetryStore:
                 );
                 """
             )
+            measurement_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(measurements)")
+            }
+            if "is_legacy" not in measurement_columns:
+                connection.execute(
+                    "ALTER TABLE measurements ADD COLUMN is_legacy INTEGER NOT NULL DEFAULT 0"
+                )
+
     def replication_cursor(self, primary_url: str) -> tuple[int, int]:
         with self._connection() as connection:
             row = connection.execute(
@@ -162,6 +186,9 @@ class TelemetryStore:
                 if connection.execute("SELECT 1 FROM measurements WHERE source_key=?", (source_key,)).fetchone():
                     continue
                 metrics = item.get("metrics") or {}
+                device = item.get("device") or {}
+                controller = item.get("controller") or {}
+                chart = item.get("chart") or {}
                 settings = item.get("settings")
                 snapshot_id = self._snapshot_id(connection, float(item.get("t", 0)), settings)
                 connection.execute(
@@ -169,16 +196,23 @@ class TelemetryStore:
                        source_key, sampled_at, settings_snapshot_id, temp_inside_c, humidity_inside_rh,
                        dew_point_inside_c, temp_outside_c, humidity_outside_rh, dew_point_outside_c,
                        vpd_inside_kpa, vpd_outside_kpa, fan_actual_pct, fan_command_pct, phase_id, mode,
-                       device_json, controller_json, chart_json)
-                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       device_json, controller_json, chart_json, is_legacy)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (source_key, float(item.get("t", 0)), snapshot_id,
-                     _number(metrics.get("temp_inside_c")), _number(metrics.get("humidity_inside_rh")),
-                     _number(metrics.get("dew_point_inside_c")), _number(metrics.get("temp_outside_c")),
-                     _number(metrics.get("humidity_outside_rh")), _number(metrics.get("dew_point_outside_c")),
-                     _number(metrics.get("vpd_inside_kpa")), _number(metrics.get("vpd_outside_kpa")),
-                     _number(metrics.get("fan_actual_pct")), _number(metrics.get("fan_command_pct")),
-                     metrics.get("phase_id"), metrics.get("mode"), _json(item.get("device") or {}),
-                     _json(item.get("controller") or {}), _json(item.get("chart") or {}))
+                     _first_number(metrics.get("temp_inside_c"), device.get("temp_c"), controller.get("temperature_inside_c")),
+                     _first_number(metrics.get("humidity_inside_rh"), device.get("humi_rh"), controller.get("humidity_inside_rh")),
+                     _first_number(metrics.get("dew_point_inside_c"), device.get("dew_c"), controller.get("dew_point_inside_c")),
+                     _first_number(metrics.get("temp_outside_c"), device.get("temp_out_c"), controller.get("temperature_outside_c")),
+                     _first_number(metrics.get("humidity_outside_rh"), device.get("humi_out_rh"), controller.get("humidity_outside_rh")),
+                     _first_number(metrics.get("dew_point_outside_c"), device.get("dew_out_c"), controller.get("dew_point_outside_c")),
+                     _first_number(metrics.get("vpd_inside_kpa"), controller.get("vpd_inside"), chart.get("vpd_inside")),
+                     _first_number(metrics.get("vpd_outside_kpa"), controller.get("vpd_outside"), chart.get("vpd_outside")),
+                     _first_number(metrics.get("fan_actual_pct"), controller.get("fan_actual"), device.get("fan_pct"), chart.get("fan_actual")),
+                     _first_number(metrics.get("fan_command_pct"), controller.get("fan_command"), chart.get("fan_command")),
+                     _first_text(metrics.get("phase_id"), controller.get("phase_id"), chart.get("phase_id")),
+                     _first_text(metrics.get("mode"), controller.get("mode"), chart.get("mode")),
+                     _json(device), _json(controller), _json(chart),
+                     int(bool(item.get("legacy"))))
                 )
             for item in events:
                 if not isinstance(item, dict) or not isinstance(item.get("id"), int) or not isinstance(item.get("event"), dict):
@@ -240,24 +274,24 @@ class TelemetryStore:
                 temp_inside_c, humidity_inside_rh, dew_point_inside_c,
                 temp_outside_c, humidity_outside_rh, dew_point_outside_c,
                 vpd_inside_kpa, vpd_outside_kpa, fan_actual_pct, fan_command_pct,
-                phase_id, mode, device_json, controller_json, chart_json
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                phase_id, mode, device_json, controller_json, chart_json, is_legacy
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
             """,
             (
                 sampled_at,
                 snapshot_id,
-                _number(device.get("temp_c", controller.get("temperature_inside_c"))),
-                _number(device.get("humi_rh")),
-                _number(device.get("dew_c")),
-                _number(device.get("temp_out_c", controller.get("temperature_outside_c"))),
-                _number(device.get("humi_out_rh")),
-                _number(device.get("dew_out_c")),
-                _number(controller.get("vpd_inside")),
-                _number(controller.get("vpd_outside")),
-                _number(controller.get("fan_actual", device.get("fan_pct"))),
-                _number(controller.get("fan_command")),
-                None if controller.get("phase_id") is None else str(controller.get("phase_id")),
-                None if controller.get("mode") is None else str(controller.get("mode")),
+                _first_number(device.get("temp_c"), controller.get("temperature_inside_c")),
+                _first_number(device.get("humi_rh"), controller.get("humidity_inside_rh")),
+                _first_number(device.get("dew_c"), controller.get("dew_point_inside_c")),
+                _first_number(device.get("temp_out_c"), controller.get("temperature_outside_c")),
+                _first_number(device.get("humi_out_rh"), controller.get("humidity_outside_rh")),
+                _first_number(device.get("dew_out_c"), controller.get("dew_point_outside_c")),
+                _first_number(controller.get("vpd_inside"), chart.get("vpd_inside")),
+                _first_number(controller.get("vpd_outside"), chart.get("vpd_outside")),
+                _first_number(controller.get("fan_actual"), device.get("fan_pct"), chart.get("fan_actual")),
+                _first_number(controller.get("fan_command"), chart.get("fan_command")),
+                _first_text(controller.get("phase_id"), chart.get("phase_id")),
+                _first_text(controller.get("mode"), chart.get("mode")),
                 _json(device),
                 _json(controller),
                 _json(chart),
@@ -354,6 +388,7 @@ class TelemetryStore:
             "controller": json.loads(row["controller_json"]),
             "chart": json.loads(row["chart_json"]),
             "settings": json.loads(row["settings_json"]) if row["settings_json"] is not None else None,
+            "legacy": bool(row["is_legacy"]) if "is_legacy" in row.keys() else False,
         }
 
     @staticmethod
