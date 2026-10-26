@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.44] - 2026-10-26
+
+### Fixed
+
+- Prevent export failures by negotiating gzip only when requested and using an incremental gzip stream.
+
 ## [0.1.43] - 2026-10-26
 
 ### Fixed

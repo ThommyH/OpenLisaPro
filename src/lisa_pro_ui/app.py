@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import atexit
 import csv
-import gzip
 import io
 import json
 import math
@@ -13,6 +12,7 @@ import re
 import socket
 import threading
 import time
+import zlib
 from copy import deepcopy
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
@@ -33,27 +33,23 @@ FLOW_EVENT_PAGE_SIZE = 20
 
 def _gzip_chunks(chunks):
     """Compress text chunks as one bounded-memory gzip stream."""
-    buffer = io.BytesIO()
-    compressor = gzip.GzipFile(fileobj=buffer, mode="wb", mtime=0)
+    compressor = zlib.compressobj(wbits=zlib.MAX_WBITS | 16)
     pending = bytearray()
-    try:
-        for chunk in chunks:
-            pending.extend(chunk.encode("utf-8"))
-            while len(pending) >= 64 * 1024:
-                compressor.write(pending[: 64 * 1024])
-                del pending[: 64 * 1024]
-                compressor.flush()
-                yield buffer.getvalue()
-                buffer.seek(0)
-                buffer.truncate(0)
-        if pending:
-            compressor.write(pending)
-        compressor.close()
-        remaining = buffer.getvalue()
-        if remaining:
-            yield remaining
-    finally:
-        compressor.close()
+    chunk_size = 64 * 1024
+    for chunk in chunks:
+        pending.extend(chunk.encode("utf-8"))
+        while len(pending) >= chunk_size:
+            compressed = compressor.compress(bytes(pending[:chunk_size]))
+            del pending[:chunk_size]
+            if compressed:
+                yield compressed
+    if pending:
+        compressed = compressor.compress(bytes(pending))
+        if compressed:
+            yield compressed
+    trailer = compressor.flush()
+    if trailer:
+        yield trailer
 
 
 def _release_version_key(value: object) -> tuple[tuple[int, ...], int, str] | None:
@@ -445,7 +441,8 @@ def create_app(
 
         def export_response(chunks, *, mimetype: str, filename: str) -> Response:
             headers = {"Content-Disposition": f"attachment; filename={filename}"}
-            if request.accept_encodings.accepts("gzip"):
+            accepted_encodings = request.accept_encodings
+            if max(accepted_encodings.quality("gzip"), accepted_encodings.quality("*")) > 0:
                 chunks = _gzip_chunks(chunks)
                 headers["Content-Encoding"] = "gzip"
                 headers["Vary"] = "Accept-Encoding"
