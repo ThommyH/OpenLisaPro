@@ -202,7 +202,7 @@
     const activeStage = currentStagePhase();
     const isDay = isDayForPhase(activeStage);
     $("phaseTag").textContent = phase;
-    $("dayPeriod").textContent = isDay ? "DAY" : "NIGHT";
+    $("dayPeriod").textContent = window.t(isDay ? "DAY" : "NIGHT");
     $("dayPeriodField").dataset.period = isDay ? "day" : "night";
     if (growOn) {
       $("heroTitle").textContent = `Day ${s.grow.day} of ${s.grow.total_days}`;
@@ -290,7 +290,7 @@
 
   function updateDayPeriod() {
     const isDay = isDayForPhase(currentStagePhase());
-    $("dayPeriod").textContent = isDay ? "DAY" : "NIGHT";
+    $("dayPeriod").textContent = window.t(isDay ? "DAY" : "NIGHT");
     $("dayPeriodField").dataset.period = isDay ? "day" : "night";
   }
 

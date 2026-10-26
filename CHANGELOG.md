@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.41] - 2026-10-26
+
+### Changed
+
+- Translate the day/night indicator caption and values into German.
+
 ## [0.1.40] - 2026-10-26
 
 ### Fixed

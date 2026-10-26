@@ -3,6 +3,9 @@
     de: {
       "Open growbox control": "OpenLisaPro Growbox-Steuerung",
       "Language": "Sprache",
+      "LIGHT CYCLE": "LICHTPHASE",
+      "DAY": "TAG",
+      "NIGHT": "NACHT",
       "Checked": "Geprüft",
       "Fan command": "Lüfterstellwert",
       "Fan actual": "Lüfter Istwert",
