@@ -11,8 +11,9 @@ import os
 import re
 import socket
 import threading
+import tempfile
 import time
-import zlib
+import zipfile
 from copy import deepcopy
 from importlib.metadata import PackageNotFoundError, version as package_version
 from pathlib import Path
@@ -29,27 +30,6 @@ from lisa_pro_ui.telemetry import TelemetryStore
 PACKAGE_DIR = Path(__file__).resolve().parent
 DEFAULT_DATA_DIR = Path(os.environ.get("LISA_PRO_DATA", PACKAGE_DIR.parent.parent / "data"))
 FLOW_EVENT_PAGE_SIZE = 20
-
-
-def _gzip_chunks(chunks):
-    """Compress text chunks as one bounded-memory gzip stream."""
-    compressor = zlib.compressobj(wbits=zlib.MAX_WBITS | 16)
-    pending = bytearray()
-    chunk_size = 64 * 1024
-    for chunk in chunks:
-        pending.extend(chunk.encode("utf-8"))
-        while len(pending) >= chunk_size:
-            compressed = compressor.compress(bytes(pending[:chunk_size]))
-            del pending[:chunk_size]
-            if compressed:
-                yield compressed
-    if pending:
-        compressed = compressor.compress(bytes(pending))
-        if compressed:
-            yield compressed
-    trailer = compressor.flush()
-    if trailer:
-        yield trailer
 
 
 def _release_version_key(value: object) -> tuple[tuple[int, ...], int, str] | None:
@@ -439,62 +419,79 @@ def create_app(
 
         records = telemetry.iter_measurements(start=start, end=end)
 
-        def export_response(chunks, *, mimetype: str, filename: str) -> Response:
-            headers = {"Content-Disposition": f"attachment; filename={filename}"}
-            accepted_encodings = request.accept_encodings
-            if max(accepted_encodings.quality("gzip"), accepted_encodings.quality("*")) > 0:
-                chunks = _gzip_chunks(chunks)
-                headers["Content-Encoding"] = "gzip"
-                headers["Vary"] = "Accept-Encoding"
-            return Response(
-                stream_with_context(chunks),
-                mimetype=mimetype,
-                headers=headers,
-            )
-
         if export_format == "jsonl":
             def jsonl_rows():
                 for record in records:
                     yield json.dumps(record, separators=(",", ":"), allow_nan=False) + "\n"
 
-            return export_response(
-                jsonl_rows(),
-                mimetype="application/x-ndjson",
-                filename="openlisapro-measurements.jsonl",
-            )
-
-        def csv_rows():
-            buffer = io.StringIO()
-            writer = csv.writer(buffer)
-            writer.writerow([
-                "timestamp_unix", "temp_inside_c", "humidity_inside_rh", "dew_point_inside_c",
-                "temp_outside_c", "humidity_outside_rh", "dew_point_outside_c", "vpd_inside_kpa",
-                "vpd_outside_kpa", "fan_actual_pct", "fan_command_pct", "phase_id", "mode",
-                "controller_json", "device_json", "settings_json",
-            ])
-            yield buffer.getvalue()
-            buffer.seek(0)
-            buffer.truncate(0)
-            for record in records:
-                metrics = record["metrics"]
+            entry_name = "openlisapro-measurements.jsonl"
+            chunks = jsonl_rows()
+        else:
+            def csv_rows():
+                buffer = io.StringIO()
+                writer = csv.writer(buffer)
                 writer.writerow([
-                    record["t"], metrics["temp_inside_c"], metrics["humidity_inside_rh"],
-                    metrics["dew_point_inside_c"], metrics["temp_outside_c"],
-                    metrics["humidity_outside_rh"], metrics["dew_point_outside_c"],
-                    metrics["vpd_inside_kpa"], metrics["vpd_outside_kpa"],
-                    metrics["fan_actual_pct"], metrics["fan_command_pct"], metrics["phase_id"],
-                    metrics["mode"], json.dumps(record["controller"], separators=(",", ":")),
-                    json.dumps(record["device"], separators=(",", ":")),
-                    json.dumps(record["settings"], separators=(",", ":")) if record["settings"] is not None else "",
+                    "timestamp_unix", "temp_inside_c", "humidity_inside_rh", "dew_point_inside_c",
+                    "temp_outside_c", "humidity_outside_rh", "dew_point_outside_c", "vpd_inside_kpa",
+                    "vpd_outside_kpa", "fan_actual_pct", "fan_command_pct", "phase_id", "mode",
+                    "controller_json", "device_json", "settings_json",
                 ])
                 yield buffer.getvalue()
                 buffer.seek(0)
                 buffer.truncate(0)
+                for record in records:
+                    metrics = record["metrics"]
+                    writer.writerow([
+                        record["t"], metrics["temp_inside_c"], metrics["humidity_inside_rh"],
+                        metrics["dew_point_inside_c"], metrics["temp_outside_c"],
+                        metrics["humidity_outside_rh"], metrics["dew_point_outside_c"],
+                        metrics["vpd_inside_kpa"], metrics["vpd_outside_kpa"],
+                        metrics["fan_actual_pct"], metrics["fan_command_pct"], metrics["phase_id"],
+                        metrics["mode"], json.dumps(record["controller"], separators=(",", ":")),
+                        json.dumps(record["device"], separators=(",", ":")),
+                        json.dumps(record["settings"], separators=(",", ":")) if record["settings"] is not None else "",
+                    ])
+                    yield buffer.getvalue()
+                    buffer.seek(0)
+                    buffer.truncate(0)
 
-        return export_response(
-            csv_rows(),
-            mimetype="text/csv",
-            filename="openlisapro-measurements.csv",
+            entry_name = "openlisapro-measurements.csv"
+            chunks = csv_rows()
+
+        # Spool to disk after a small in-memory threshold. ZIP central-directory
+        # metadata requires seeking, and a finished archive lets clients verify
+        # its size and avoids sending a truncated file if export generation fails.
+        archive = tempfile.SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b")
+        try:
+            with zipfile.ZipFile(
+                archive, mode="w", compression=zipfile.ZIP_DEFLATED, compresslevel=6
+            ) as zipped:
+                with zipped.open(entry_name, mode="w", force_zip64=True) as entry:
+                    for chunk in chunks:
+                        entry.write(chunk.encode("utf-8"))
+            archive_size = archive.tell()
+            archive.seek(0)
+        except Exception:
+            archive.close()
+            raise
+
+        def archive_chunks():
+            try:
+                while True:
+                    chunk = archive.read(64 * 1024)
+                    if not chunk:
+                        break
+                    yield chunk
+            finally:
+                archive.close()
+
+        return Response(
+            stream_with_context(archive_chunks()),
+            mimetype="application/zip",
+            headers={
+                "Content-Disposition": f"attachment; filename=openlisapro-measurements-{export_format}.zip",
+                "Content-Length": str(archive_size),
+            },
         )
 
     @app.post("/api/proxy/silent/toggle")

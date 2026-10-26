@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.45] - 2026-10-26
+
+### Changed
+
+- Package JSON Lines and CSV data exports in ZIP archives, spooling large archives to disk to limit memory use.
+
 ## [0.1.44] - 2026-10-26
 
 ### Fixed
