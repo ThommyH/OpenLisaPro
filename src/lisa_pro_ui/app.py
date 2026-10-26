@@ -442,15 +442,28 @@ def create_app(
             return jsonify({"error": "format must be jsonl or csv"}), 400
 
         records = telemetry.iter_measurements(start=start, end=end)
+
+        def export_response(chunks, *, mimetype: str, filename: str) -> Response:
+            headers = {"Content-Disposition": f"attachment; filename={filename}"}
+            if request.accept_encodings.accepts("gzip"):
+                chunks = _gzip_chunks(chunks)
+                headers["Content-Encoding"] = "gzip"
+                headers["Vary"] = "Accept-Encoding"
+            return Response(
+                stream_with_context(chunks),
+                mimetype=mimetype,
+                headers=headers,
+            )
+
         if export_format == "jsonl":
             def jsonl_rows():
                 for record in records:
                     yield json.dumps(record, separators=(",", ":"), allow_nan=False) + "\n"
 
-            return Response(
-                stream_with_context(_gzip_chunks(jsonl_rows())),
-                mimetype="application/gzip",
-                headers={"Content-Disposition": "attachment; filename=openlisapro-measurements.jsonl.gz"},
+            return export_response(
+                jsonl_rows(),
+                mimetype="application/x-ndjson",
+                filename="openlisapro-measurements.jsonl",
             )
 
         def csv_rows():
@@ -481,10 +494,10 @@ def create_app(
                 buffer.seek(0)
                 buffer.truncate(0)
 
-        return Response(
-            stream_with_context(_gzip_chunks(csv_rows())),
-            mimetype="application/gzip",
-            headers={"Content-Disposition": "attachment; filename=openlisapro-measurements.csv.gz"},
+        return export_response(
+            csv_rows(),
+            mimetype="text/csv",
+            filename="openlisapro-measurements.csv",
         )
 
     @app.post("/api/proxy/silent/toggle")

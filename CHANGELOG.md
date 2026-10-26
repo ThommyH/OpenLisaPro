@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.43] - 2026-10-26
+
+### Fixed
+
+- Keep gzip compression on export transfers while saving normal JSON Lines and CSV files that open without manual decompression.
+
 ## [0.1.42] - 2026-10-26
 
 ### Changed
