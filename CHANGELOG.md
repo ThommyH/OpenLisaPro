@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.55] - 2026-10-27
+
+### Changed
+
+- Make the DLI reading's click-through to the recommendations guide more obvious.
+
 ## [0.1.54] - 2026-10-27
 
 ### Added

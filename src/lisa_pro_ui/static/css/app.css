@@ -422,6 +422,23 @@ main > * { width: 100%; min-width: 0; max-width: 100%; }
   cursor: pointer;
 }
 
+.dli-reading-line { display: block; }
+.dli-open-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.42rem;
+  padding: 0.22rem 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--leaf);
+  font-family: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: normal;
+}
+.dli-trigger:hover .dli-open-hint { border-color: var(--leaf); background: rgba(125, 189, 112, 0.12); }
 .dli-trigger:hover { color: var(--leaf); }
 .dli-trigger:focus-visible { outline: 2px solid var(--leaf); outline-offset: 4px; border-radius: 3px; }
 

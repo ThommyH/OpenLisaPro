@@ -50,6 +50,7 @@
       "ToF distance": "ToF-Abstand",
       "DLI (approx.)": "DLI (ca.)",
       "Show DLI stage recommendations": "DLI-Empfehlungen nach Phase anzeigen",
+      "View DLI guide": "DLI-Ratgeber öffnen",
       "Cannabis DLI recommendations": "DLI-Empfehlungen für Cannabis",
       "Recommended now": "Aktuelle Empfehlung",
       "Recommended DLI by plant age and stage": "Empfohlener DLI nach Pflanzenalter und Phase",
