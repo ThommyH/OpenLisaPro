@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.54] - 2026-10-27
+
+### Added
+
+- Add an accessible DLI recommendations guide with weekly stage targets, approximate plant-age ranges, a chart, and a highlighted recommendation for the active stage and grow day.
+
 ## [0.1.53] - 2026-10-27
 
 ### Changed

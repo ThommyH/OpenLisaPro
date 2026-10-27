@@ -1,4 +1,9 @@
 (() => {
+  const DLI_RECOMMENDATIONS = [
+    ...[12, 16, 19].map((dli, i) => ({ stage: "Seedlings / cuttings", key: "seedling", week: i + 1, startDay: i * 7 + 1, endDay: (i + 1) * 7, dli })),
+    ...[25, 30, 35, 40, 43].map((dli, i) => ({ stage: "Vegetative", key: "vegetative", week: i + 1, startDay: 22 + i * 7, endDay: 28 + i * 7, dli })),
+    ...[30, 35, 40, 45, 50, 50, 45, 45].map((dli, i) => ({ stage: "Flowering", key: "flowering", week: i + 1, startDay: 57 + i * 7, endDay: 63 + i * 7, dli })),
+  ];
   const $ = (id) => document.getElementById(id);
   const state = {
     status: null,
@@ -253,6 +258,57 @@
     return null;
   }
 
+  function dliStageKey() {
+    const phase = currentStagePhase();
+    const value = `${phase?.name || ""} ${state.status?.grow?.phase || ""}`.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    if (/flower|bloom|blute/.test(value)) return "flowering";
+    if (/vegetative|\bveg\b|wachstum/.test(value)) return "vegetative";
+    if (/seedling|keim|clone|propagat/.test(value)) return "seedling";
+    return null;
+  }
+
+  function renderDliGuide() {
+    const rows = $("dliRecommendationRows");
+    if (!rows) return;
+    rows.innerHTML = "";
+    DLI_RECOMMENDATIONS.forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.dataset.stage = item.key;
+      tr.dataset.week = String(item.week);
+      tr.innerHTML = `<td>${item.startDay}–${item.endDay}</td><td>${item.stage}</td><td>${item.week}</td><td>${item.dli} mol/m²/day</td>`;
+      rows.appendChild(tr);
+    });
+    const chart = $("dliChart");
+    chart.innerHTML = "";
+    DLI_RECOMMENDATIONS.forEach((item) => {
+      const column = document.createElement("div");
+      column.className = `dli-chart-column ${item.key}`;
+      column.innerHTML = `<span class="dli-chart-value">${item.dli}</span><span class="dli-chart-bar" style="height:${item.dli * 1.65}px"></span><span class="dli-chart-week">${item.week}</span>`;
+      chart.appendChild(column);
+    });
+  }
+
+  function updateDliRecommendation() {
+    const grow = state.status?.grow;
+    const stage = grow?.started ? dliStageKey() : null;
+    const day = Number(grow?.day);
+    const current = stage && Number.isFinite(day) && day > 0
+      ? DLI_RECOMMENDATIONS.filter((item) => item.key === stage).find((item) => day >= item.startDay && day <= item.endDay)
+        || DLI_RECOMMENDATIONS.filter((item) => item.key === stage).find((item) => day < item.startDay)
+        || DLI_RECOMMENDATIONS.filter((item) => item.key === stage).slice(-1)[0]
+      : null;
+    $("dliCurrentRecommendation").textContent = current ? `${current.dli} mol/m²/day` : "—";
+    $("dliRecommendationMeta").textContent = current
+      ? `${window.t(current.stage)} · ${window.t("week")} ${current.week} · ${window.t("grow day")} ${day}`
+      : "Start a grow with a recognized stage to see its recommendation.";
+    document.querySelectorAll("#dliRecommendationRows tr").forEach((row) => {
+      const active = !!current && row.dataset.stage === current.key && row.dataset.week === String(current.week);
+      row.classList.toggle("current", active);
+      if (active) row.setAttribute("aria-current", "true");
+      else row.removeAttribute("aria-current");
+    });
+  }
+
   function isDayForPhase(phase) {
     const mode = state.control?.state?.mode;
     if (["day", "day_silent", "night", "night_silent"].includes(mode)) {
@@ -430,6 +486,7 @@
     updateHero(s);
     updateCurrentStageCard();
     updateClimate(s, cs);
+    updateDliRecommendation();
     updateActuators(s);
     updateGrowStrip(s);
     updateHealth(s);
@@ -1760,6 +1817,10 @@
   $("checkBuild")?.addEventListener("click", () => checkBuildVersion(true));
   $("flowEventsPrevious")?.addEventListener("click", () => loadFlowEvents(state.flowPage - 1).catch((err) => console.error(err)));
   $("flowEventsNext")?.addEventListener("click", () => loadFlowEvents(state.flowPage + 1).catch((err) => console.error(err)));
+
+  renderDliGuide();
+  $("dliEstimate")?.addEventListener("click", () => $("dliGuideDlg").showModal());
+  $("dliGuideClose")?.addEventListener("click", () => $("dliGuideDlg").close());
 
   document.querySelectorAll("[data-chart-range]").forEach((button) => button.addEventListener("click", () => {
     state.chartHours = Number(button.dataset.chartRange);

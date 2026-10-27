@@ -91,7 +91,7 @@
                 </div>
                 <div class="reading xl">
                   <span class="label" title="Estimated from the FluxShield Habibi 150 Enhanced PPFD table at 20–40 cm; assumes the current LED setting stays constant through the scheduled light period.">DLI (approx.)</span>
-                  <span class="value mono" id="dliEstimate"><span id="dliEstimateValue">—</span><small class="dli-unit">mol/m²/day</small></span>
+                  <button type="button" class="value mono dli-trigger" id="dliEstimate" aria-label="Show DLI stage recommendations" aria-haspopup="dialog" aria-controls="dliGuideDlg"><span id="dliEstimateValue">—</span><small class="dli-unit">mol/m²/day</small></button>
                 </div>
               </div>
             </section>
@@ -497,6 +497,32 @@
           <button value="ok" class="btn primary">Confirm</button>
         </div>
       </form>
+    </dialog>
+    <dialog class="dli-guide" id="dliGuideDlg" aria-labelledby="dliGuideTitle">
+      <div class="dli-guide-inner">
+        <div class="dli-guide-heading">
+          <h2 id="dliGuideTitle">Cannabis DLI recommendations</h2>
+          <button type="button" class="btn ghost" id="dliGuideClose" aria-label="Close">×</button>
+        </div>
+        <section class="dli-current" aria-live="polite">
+          <span class="label">Recommended now</span>
+          <strong id="dliCurrentRecommendation">—</strong>
+          <span id="dliRecommendationMeta"></span>
+        </section>
+        <h3>Recommended DLI by plant age and stage</h3>
+        <div class="dli-chart-wrap" role="img" aria-label="DLI recommendation chart; values are also available in the table below">
+          <div class="dli-chart" id="dliChart" aria-hidden="true"></div>
+          <div class="dli-chart-stages" aria-hidden="true"><span>Seedlings / cuttings</span><span>Vegetative</span><span>Flowering</span></div>
+        </div>
+        <div class="dli-table-wrap">
+          <table class="dli-table">
+            <thead><tr><th scope="col">Approx. grow days</th><th scope="col">Stage</th><th scope="col">Stage week</th><th scope="col">Recommended DLI</th></tr></thead>
+            <tbody id="dliRecommendationRows"></tbody>
+          </table>
+        </div>
+        <p class="dli-guide-note">Approximate targets. Stage week is estimated from plant age using a 3-week seedling phase followed by 5 vegetative weeks; the growbox reports the current phase and overall grow day but not the phase start date.</p>
+        <a href="https://www.pro-grow.com.au/wp-content/uploads/2023/12/DLI-User-Guide-for-Medicinal-Cannabis.pdf" target="_blank" rel="noopener noreferrer">Source: Pro Grow DLI Plant Guide</a>
+      </div>
     </dialog>
 
     <script src="{{ url_for('static', filename='js/i18n.js') }}"></script>
