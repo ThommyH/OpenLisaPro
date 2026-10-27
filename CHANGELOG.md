@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.53] - 2026-10-27
+
+### Changed
+
+- Move the VPD target into the compact controller status row.
+
 ## [0.1.52] - 2026-10-27
 
 ### Changed

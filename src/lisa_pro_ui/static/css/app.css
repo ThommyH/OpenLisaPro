@@ -858,7 +858,7 @@ input:focus {
 
 .pid-status {
   display: grid;
-  grid-template-columns: repeat(4, minmax(7rem, 1fr));
+  grid-template-columns: repeat(5, minmax(6rem, 1fr));
   gap: 0.65rem 1rem;
   flex: 1;
   min-width: min(100%, 28rem);
