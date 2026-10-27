@@ -1053,7 +1053,7 @@
           </label>
           <div class="soft-temperature-limits">
             <strong>Soft temperature limits for this stage</strong>
-            <label class="soft-temperature-toggle" title="When temperature exceeds the soft maximum, fan boost starts at 5 percentage points and rises by 10 points each minute while temperature is flat or rising. It backs off only after temperature falls. The boost stops at the stage maximum, global temperature weight, or fan limit.">
+            <label class="soft-temperature-toggle" title="When temperature exceeds the soft maximum, the boost starts small and grows every minute while temperature is flat or rising. The global temperature weight controls growth rate; Maximum fan boost is an absolute percentage-point cap. The fan limit still applies.">
               <input type="checkbox" ${softTemperature.enabled === false ? "" : "checked"} data-soft-temperature-enabled-phase="${id}" />
               Enable soft temperature fan boost
             </label>
@@ -1064,9 +1064,9 @@
               <input type="number" min="5" max="50" step="0.5" placeholder="Off" value="${softTemperature.max_temp_c ?? ""}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_temp_c" aria-label="${phase.name || `Phase ${id}`} soft maximum temperature in Celsius" />
             </label>
             <label>Maximum fan boost
-              <input type="number" min="0" max="100" step="1" value="${softTemperature.max_boost_pct ?? 20}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_boost_pct" aria-label="${phase.name || `Phase ${id}`} maximum soft temperature fan boost in percent" />
+              <input type="number" min="0" max="100" step="1" value="${softTemperature.max_boost_pct ?? 20}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_boost_pct" aria-label="${phase.name || `Phase ${id}`} maximum soft temperature fan boost in percentage points" />
             </label>
-            <span>Caps the added fan speed in percentage points. The global temperature weight and stage fan limit also apply.</span>
+            <span>Absolute cap for added fan speed in percentage points. The temperature weight controls growth rate; the stage fan limit also applies.</span>
           </div>
           <p>The hard maximum temperature remains a separate safety override. Day runs from lights on to lights off, including overnight schedules.</p>
         </div>

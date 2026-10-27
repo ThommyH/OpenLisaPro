@@ -836,11 +836,10 @@ class FanPidController:
         weight_pct_per_c: float,
         now: float,
     ) -> float:
-        """Adjust the extra fan boost gradually from the observed temperature trend.
+        """Adjust a percentage-point fan bonus using temperature trend.
 
-        Start with a small boost. Increase whenever the temperature is flat or
-        rising; only reduce after an observation window confirms that it is
-        falling. This keeps trying to bring temperature below the soft limit.
+        The stage setting is an absolute cap. Temperature excess and the global
+        weight control the per-minute growth step; a falling trend backs off.
         """
         if not hot or temperature_c is None or soft_max_c is None:
             self._reset_soft_temperature_boost()
@@ -860,15 +859,19 @@ class FanPidController:
         target_boost = min(
             max(0.0, float(max_available_pct)),
             max(0.0, float(max_stage_boost_pct)),
-            max(0.0, (float(temperature_c) - float(soft_max_c)) * float(weight_pct_per_c)),
         )
-        if target_boost <= 0.0:
+        temperature_demand = max(
+            0.0, (float(temperature_c) - float(soft_max_c)) * float(weight_pct_per_c)
+        )
+        if target_boost <= 0.0 or temperature_demand <= 0.0:
             self._reset_soft_temperature_boost()
             return 0.0
 
+        boost_step = min(SOFT_TEMPERATURE_BOOST_STEP_PCT, temperature_demand)
+
         if self._soft_temperature_observed_at is None:
             self._soft_temperature_boost_pct = min(
-                SOFT_TEMPERATURE_INITIAL_BOOST_PCT, target_boost
+                SOFT_TEMPERATURE_INITIAL_BOOST_PCT, temperature_demand, target_boost
             )
             self._soft_temperature_observed_at = now
             self._soft_temperature_observed_c = float(temperature_c)
@@ -878,12 +881,12 @@ class FanPidController:
             if trend >= -SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C:
                 self._soft_temperature_boost_pct = min(
                     target_boost,
-                    self._soft_temperature_boost_pct + SOFT_TEMPERATURE_BOOST_STEP_PCT,
+                    self._soft_temperature_boost_pct + boost_step,
                 )
             elif trend < -SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C:
                 self._soft_temperature_boost_pct = max(
                     min(SOFT_TEMPERATURE_MIN_BOOST_PCT, target_boost),
-                    self._soft_temperature_boost_pct - SOFT_TEMPERATURE_BOOST_STEP_PCT,
+                    self._soft_temperature_boost_pct - boost_step,
                 )
             self._soft_temperature_observed_at = now
             self._soft_temperature_observed_c = float(temperature_c)

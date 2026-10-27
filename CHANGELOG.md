@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.57] - 2026-10-27
+
+### Changed
+
+- Treat the per-stage maximum soft-temperature fan boost as an absolute percentage-point cap, with the global temperature weight controlling its growth rate.
+
 ## [0.1.56] - 2026-10-27
 
 ### Changed
