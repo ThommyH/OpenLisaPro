@@ -47,6 +47,8 @@
       "Humidity": "Luftfeuchte",
       "Dew point": "Taupunkt",
       "Target": "Ziel",
+      "ToF distance": "ToF-Abstand",
+      "DLI (approx.)": "DLI (ca.)",
       "Light": "Licht",
       "Exhaust": "Abluft",
       "Circ": "Umluft",

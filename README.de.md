@@ -9,6 +9,7 @@ Der Browser kommuniziert mit der lokalen Flask-Anwendung, die Anfragen an die Gr
 ## Funktionen
 
 - Temperatur, Luftfeuchtigkeit, Taupunkt, VPD, Wachstumsphase und Gerätestatus innen und außen überwachen.
+- Die tägliche Lichtmenge (DLI) anhand von ToF-Abstand, LED-Leistung, Lichtplan der aktiven Phase und den PPFD-Daten des FluxShield Habibi 150 Enhanced schätzen.
 - Lüftergrenzen, VPD-Ziele, Temperaturgrenzen, LED-Stufen und Lichtpläne je Wachstumsphase konfigurieren.
 - Optional die Abluftgeschwindigkeit mit einem lokalen PID-Regler und Temperaturschutz steuern.
 - Im vollständigen manuellen Modus Lüfter- und LED-Prozentwerte direkt vorgeben; PID-Regelung und Temperaturüberschreibungen werden dabei umgangen.

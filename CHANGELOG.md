@@ -2,6 +2,31 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.51] - 2026-10-27
+
+### Changed
+
+- Add an approximate DLI dashboard reading based on ToF distance, LED output, and the active stage's light schedule; size its unit to fit beside the value.
+- Use smaller type for the DLI unit so it fits beside the reading.
+
+## [0.1.50] - 2026-10-27
+
+### Added
+
+- Estimate daily light integral from FluxShield Habibi 150 Enhanced PPFD data, ToF distance, LED setting, and the active phase's light schedule.
+
+## [0.1.49] - 2026-10-27
+
+### Fixed
+
+- Sync replica history before sending its heartbeat to the primary.
+
+## [0.1.48] - 2026-10-27
+
+### Added
+
+- Show the device's ToF distance metric on the dashboard, with a German translation.
+
 ## [0.1.47] - 2026-10-26
 
 ### Changed

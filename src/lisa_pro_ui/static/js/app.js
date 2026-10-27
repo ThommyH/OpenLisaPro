@@ -340,6 +340,8 @@
     $("vpdTarget").title = targetLimited
       ? "Requested target → achievable target estimated from outside dew point at inside temperature"
       : "Requested VPD target";
+    $("tofDistance").textContent = s.tof_mm == null ? "—" : `${fmt1(s.tof_mm)} mm`;
+    $("dliEstimateValue").textContent = s.dli_mol_m2_day == null ? "—" : fmt1(s.dli_mol_m2_day);
     $("tempOut").textContent = s.temp_out_c == null ? "—" : `${fmtSensor(s.temp_out_c)}°C`;
     $("humiOut").textContent = s.humi_out_rh == null ? "—" : `${fmtSensor(s.humi_out_rh)}%`;
     $("ledGlow").classList.toggle("on", !!s.light_on);
@@ -1341,6 +1343,35 @@
   async function refreshStatus() {
     try {
       const s = await api("/api/proxy/status");
+      state.status = s;
+      const phase = currentStagePhase();
+      const phaseId = phase && String(phase.id ?? 0);
+      const config = (state.control && state.control.config) || {};
+      const schedule = (config.phase_schedules && config.phase_schedules[phaseId]) || (phase && phase.schedule) || {};
+      if (phase && s.tof_mm != null && schedule.on && schedule.off) {
+        const ledModes = (config.led && config.led[phaseId]) || {};
+        const dayMode = ["day", "day_silent"].includes(state.control?.state?.mode)
+          ? state.control.state.mode
+          : "day";
+        const phaseDayLed = ((phase.settings || {}).day || {}).led;
+        const configuredLed = config.manual_mode
+          ? config.manual_led_pct
+          : ledModes[dayMode] ?? ledModes.day ?? phaseDayLed ?? 40;
+        const ledPct = config.manual_mode || !isDayForPhase(phase) || s.light_pct == null
+          ? configuredLed
+          : s.light_pct;
+        try {
+          const estimate = await api("/api/dli-estimate", {
+            method: "POST",
+            body: JSON.stringify({ tof_mm: s.tof_mm, led_pct: ledPct, on: schedule.on, off: schedule.off }),
+          });
+          s.dli_mol_m2_day = estimate.dli_mol_m2_day;
+        } catch (error) {
+          s.dli_mol_m2_day = null;
+        }
+      } else {
+        s.dli_mol_m2_day = null;
+      }
       renderStatus(s);
     } catch (err) {
       setLink(false, "Unreachable");

@@ -402,6 +402,15 @@ main > * { width: 100%; min-width: 0; max-width: 100%; }
   font-size: clamp(1.35rem, 2vw, 1.75rem);
 }
 
+.dli-unit {
+  color: var(--ink-dim);
+  font-size: 0.55em;
+  font-weight: 400;
+  letter-spacing: normal;
+  margin-left: 0.2em;
+  white-space: nowrap;
+}
+
 .reading .unit {
   color: var(--ink-dim);
   font-size: 0.95rem;

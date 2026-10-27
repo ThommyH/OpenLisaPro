@@ -25,6 +25,7 @@ from flask import Flask, Response, jsonify, render_template, request, stream_wit
 from lisa_pro_ui.client import DEFAULT_BASE_URL, LisaProClient, LisaProError
 from lisa_pro_ui.config_store import ConfigStore
 from lisa_pro_ui.controller import FanPidController
+from lisa_pro_ui.lighting import estimate_dli
 from lisa_pro_ui.telemetry import TelemetryStore
 
 PACKAGE_DIR = Path(__file__).resolve().parent
@@ -163,13 +164,6 @@ def create_app(
         if healthy and previous_role == "primary" and changed:
             apply_master_config_to_device()
         if healthy:
-            heartbeat_body = {"node_name": app.config["HA_NODE_NAME"], "node_url": app.config["HA_NODE_URL"]}
-            heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps(heartbeat_body).encode(), headers={"Content-Type": "application/json"}, method="POST")
-            try:
-                with urlopen(heartbeat, timeout=3):
-                    pass
-            except Exception as exc:  # noqa: BLE001 — heartbeat problems do not override the authoritative snapshot result
-                app.logger.warning("HA master heartbeat failed: %s", exc)
             try:
                 measurement_id, flow_event_id = telemetry.replication_cursor(master_url)
                 sync_req = Request(
@@ -180,6 +174,13 @@ def create_app(
                     telemetry.import_replication_batch(master_url, json.loads(response.read().decode("utf-8")))
             except Exception as exc:  # noqa: BLE001 — history replication cannot make a healthy primary look offline
                 app.logger.warning("HA history sync failed: %s", exc)
+            heartbeat_body = {"node_name": app.config["HA_NODE_NAME"], "node_url": app.config["HA_NODE_URL"]}
+            heartbeat = Request(f"{master_url}/api/ha/heartbeat", data=json.dumps(heartbeat_body).encode(), headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                with urlopen(heartbeat, timeout=3):
+                    pass
+            except Exception as exc:  # noqa: BLE001 — heartbeat problems do not override the authoritative snapshot result
+                app.logger.warning("HA master heartbeat failed: %s", exc)
         return healthy
 
     def monitor_master():
@@ -684,6 +685,12 @@ def create_app(
                 return _ok(c.status())
         except Exception as exc:
             return _err(exc)
+
+    @app.post("/api/dli-estimate")
+    def dli_estimate():
+        body = request.get_json(force=True, silent=True) or {}
+        estimate = estimate_dli(body.get("tof_mm"), body.get("led_pct"), body.get("on"), body.get("off"))
+        return jsonify({"dli_mol_m2_day": estimate})
 
     @app.get("/api/proxy/info")
     def proxy_info():
