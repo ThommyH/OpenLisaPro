@@ -14,7 +14,13 @@ from lisa_pro_ui.client import LisaProClient, LisaProError
 from lisa_pro_ui.config_store import MODES, ConfigStore
 from lisa_pro_ui.pid import PIDController
 from lisa_pro_ui.telemetry import TelemetryStore
-from lisa_pro_ui.vpd import dew_point_c, vpd_from_dew_point_kpa, vpd_kpa
+from lisa_pro_ui.vpd import (
+    dew_point_c,
+    mixed_air_vpd_kpa,
+    saturation_vapor_pressure_kpa,
+    vpd_from_dew_point_kpa,
+    vpd_kpa,
+)
 
 log = logging.getLogger(__name__)
 
@@ -32,6 +38,9 @@ SOFT_TEMPERATURE_BOOST_STEP_PCT = 10.0
 SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 5.0
 SOFT_TEMPERATURE_MIN_BOOST_PCT = 5.0
 PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
+VPD_FAN_MIXING_FRACTION = 0.10
+VPD_FAN_MIN_BENEFIT_KPA = 0.02
+VPD_FAN_MAX_BOOST_PCT = 10.0
 
 PHASE_NAME_HINTS = (
     ("flower", ("flower", "blüte", "bluete", "blute", "bloom")),
@@ -463,9 +472,43 @@ class FanPidController:
 
         deadband = float(pid_cfg.get("deadband_kpa", 0.03))
         error = target - float(vpd_inside) if vpd_inside is not None else 0.0
-        pid_out = self._pid.update(error, now, deadband=deadband)
-        # Positive error (need higher VPD) → higher exhaust within [fan_min, fan_max].
-        desired = self._map_pid_to_fan(pid_out, fan_min, fan_max, error, deadband=deadband)
+        projected_vpd = None
+        if all(
+            value is not None
+            for value in (temperature_inside, temperature_outside, vpd_inside, vpd_outside)
+        ):
+            vapor_inside = saturation_vapor_pressure_kpa(temperature_inside) - float(vpd_inside)
+            vapor_outside = saturation_vapor_pressure_kpa(temperature_outside) - float(vpd_outside)
+            projected_vpd = mixed_air_vpd_kpa(
+                temperature_inside,
+                vapor_inside,
+                temperature_outside,
+                vapor_outside,
+                VPD_FAN_MIXING_FRACTION,
+            )
+        projected_change = (
+            projected_vpd - float(vpd_inside) if projected_vpd is not None else None
+        )
+        helps_vpd = (
+            projected_change is not None
+            and abs(projected_change) >= VPD_FAN_MIN_BENEFIT_KPA
+            and error * projected_change > 0
+        )
+        # Predict the direction from a small mixed-air step that changes both
+        # temperature and moisture. If that step cannot meaningfully move VPD
+        # toward target, keep the configured fan minimum for quiet operation.
+        fan_error = abs(error) if helps_vpd else 0.0
+        if not helps_vpd:
+            self._pid.reset()
+        pid_out = self._pid.update(fan_error, now, deadband=deadband)
+        desired = self._map_pid_to_fan(
+            pid_out, fan_min, fan_max, fan_error, deadband=deadband
+        )
+        # A small VPD correction is preferable to a loud exhaust response. The
+        # configured fan minimum remains the quiet baseline; temperature
+        # protection is applied separately below.
+        vpd_fan_ceiling = min(fan_max, fan_min + VPD_FAN_MAX_BOOST_PCT)
+        desired = min(desired, vpd_fan_ceiling)
         vpd_fan_request = desired
 
         # Soft temperature control is a gradual feedback boost above the VPD
@@ -652,11 +695,7 @@ class FanPidController:
         *,
         deadband: float = 0.0,
     ) -> float:
-        """Start at the configured minimum and add exhaust only when VPD needs it.
-
-        Positive PID output means inside VPD is below target, so more exhaust is
-        requested. Zero or negative output stays at the minimum fan limit.
-        """
+        """Map positive control effort to more exhaust within the fan limits."""
         if error <= deadband:
             return fan_min
         span = max(0.0, fan_max - fan_min)

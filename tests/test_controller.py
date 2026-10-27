@@ -211,6 +211,39 @@ def make_temperature_controller(tmp_path):
     )
 
 
+def test_vpd_fan_assist_uses_mixed_air_direction_and_quiet_cap(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update(
+        {
+            "temperature_limits": {},
+            "temperature_soft_limits": {"0": {"enabled": False}},
+            "fan_limits": {"0": {"day": {"fan_min": 20, "fan_max": 80}}},
+            "vpd_targets": {"0": {"day": {"vpd_min": 0.8, "vpd_max": 1.2}}},
+            "pid": {"kp": 70, "ki": 0, "kd": 0, "ramp_pct_per_min": 60, "interval_s": 5},
+        }
+    )
+    TemperatureProtectionClient.status_data.update(
+        {
+            "temp_c": 25.0,
+            "humi_rh": 48.0,
+            "temp_out_c": 22.0,
+            "humi_out_rh": 50.0,
+            "fan_pct": 20.0,
+        }
+    )
+
+    controller._tick(controller.store.get())
+    beneficial = controller.snapshot()["state"]
+    assert beneficial["fan_vpd_request"] == 30.0
+
+    # Same-temperature, drier intake air would raise VPD further, so the
+    # controller keeps the configured minimum instead of making the tent loud.
+    TemperatureProtectionClient.status_data.update({"temp_out_c": 25.0, "humi_out_rh": 30.0})
+    controller._tick(controller.store.get())
+    not_beneficial = controller.snapshot()["state"]
+    assert not_beneficial["fan_vpd_request"] == 20.0
+
+
 def test_over_temperature_commands_stage_max_fan(tmp_path):
     controller = make_temperature_controller(tmp_path)
     controller._tick(controller.store.get())
@@ -298,8 +331,8 @@ def test_soft_temperature_hot_adds_fan_correction_outside_vpd_band_and_respects_
     assert not 0.8 <= state["vpd_inside"] <= 1.2
     assert state["temperature_soft_active"] is True
     assert state["temperature_adjustment_pct"] == 2.0
-    assert state["fan_vpd_request"] == 20.0
-    assert state["fan_ramp_target"] == 22
+    assert state["fan_vpd_request"] == 30.0
+    assert state["fan_ramp_target"] == 32
 
     controller.store.update({"temperature_limits": {"0": {"max_temp_c": 25}}})
     TemperatureProtectionClient.status_data.update({"humi_rh": 70.0})

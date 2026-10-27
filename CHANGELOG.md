@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.56] - 2026-10-27
+
+### Changed
+
+- Estimate the VPD effect of outdoor air exchange using mixed-air temperature and moisture, and limit VPD-driven fan increases to a quiet 10 percentage points above the configured minimum.
+
 ## [0.1.55] - 2026-10-27
 
 ### Changed

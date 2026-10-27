@@ -152,15 +152,15 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
     assert retried["temperature_soft_triggered"] is True
     assert retried["temperature_adjustment_pct"] == 5.0
 
-    # Raising the VPD target changes the fan request; raising the soft ceiling
-    # turns off soft-temperature adjustment without disturbing the settings save.
+    # Raising VPD is not a reason to ventilate when the mixed outdoor air is
+    # predicted to lower VPD; the quiet fan minimum is preferred.
     saved = save_settings(fan_min=10, fan_max=70, vpd_min=1.3, soft_max=30, boost=30)
     assert saved.status_code == 200
     controller._tick(saved.get_json()["config"])
     vpd_state = client.get("/api/control").get_json()["state"]
     assert vpd_state["temperature_soft_triggered"] is False
     assert vpd_state["temperature_adjustment_pct"] == 0.0
-    assert vpd_state["fan_vpd_request"] > retried["fan_vpd_request"]
+    assert vpd_state["fan_vpd_request"] == 10.0
     assert FakeLisaProClient.phases[0]["settings"]["day"]["vpd_min"] == 1.3
 
     # Change the configured band and thresholds back and forth; device values
@@ -178,7 +178,7 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
     assert device_settings["vpd_min"] == 0.4
     assert restored["temperature_soft_triggered"] is True
     assert restored["temperature_adjustment_pct"] == 5.0
-    assert restored["fan_vpd_request"] == 20.0
+    assert restored["fan_vpd_request"] == 30.0
     assert restored["fan_ramp_target"] > restored["fan_vpd_request"]
 
     saved = save_settings(fan_min=10, fan_max=70, vpd_min=0.4, soft_max=24, boost=30)
@@ -187,7 +187,7 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
     back_config = client.get("/api/control").get_json()["config"]
     assert back_config["fan_limits"]["0"]["day"] == {"fan_min": 10.0, "fan_max": 70.0}
     assert back_again["temperature_soft_triggered"] is True
-    assert back_again["fan_vpd_request"] == 10.0
+    assert back_again["fan_vpd_request"] == 20.0
     assert back_again["fan_ramp_target"] > back_again["fan_vpd_request"]
 
 

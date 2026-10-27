@@ -60,3 +60,54 @@ def vpd_from_dew_point_kpa(
         return None
     actual_vapor_pressure = saturation_vapor_pressure_kpa(dew_point)
     return max(0.0, saturation_vapor_pressure_kpa(temp) - actual_vapor_pressure)
+
+
+def mixed_air_vpd_kpa(
+    temp_inside_c: float,
+    vapor_pressure_inside_kpa: float,
+    temp_outside_c: float,
+    vapor_pressure_outside_kpa: float,
+    outside_fraction: float,
+    *,
+    pressure_kpa: float = 101.325,
+) -> Optional[float]:
+    """Estimate VPD after adiabatically mixing indoor and outdoor air.
+
+    Humidity ratio and moist-air enthalpy are mixed by dry-air mass. This
+    captures both moisture and temperature changes; it is a direction estimate,
+    not an airflow or steady-state greenhouse model.
+    """
+    try:
+        temp_inside = float(temp_inside_c)
+        vapor_inside = float(vapor_pressure_inside_kpa)
+        temp_outside = float(temp_outside_c)
+        vapor_outside = float(vapor_pressure_outside_kpa)
+        fraction = float(outside_fraction)
+        pressure = float(pressure_kpa)
+    except (TypeError, ValueError):
+        return None
+    values = (temp_inside, vapor_inside, temp_outside, vapor_outside, fraction, pressure)
+    if not all(math.isfinite(value) for value in values):
+        return None
+    if not 0.0 <= fraction <= 1.0 or pressure <= 0.0:
+        return None
+    if not 0.0 <= vapor_inside < pressure or not 0.0 <= vapor_outside < pressure:
+        return None
+
+    molecular_ratio = 0.621945
+    humidity_inside = molecular_ratio * vapor_inside / (pressure - vapor_inside)
+    humidity_outside = molecular_ratio * vapor_outside / (pressure - vapor_outside)
+    enthalpy_inside = (
+        1.006 * temp_inside + humidity_inside * (2501.0 + 1.86 * temp_inside)
+    )
+    enthalpy_outside = (
+        1.006 * temp_outside + humidity_outside * (2501.0 + 1.86 * temp_outside)
+    )
+
+    humidity_mixed = (1.0 - fraction) * humidity_inside + fraction * humidity_outside
+    enthalpy_mixed = (1.0 - fraction) * enthalpy_inside + fraction * enthalpy_outside
+    temp_mixed = (enthalpy_mixed - 2501.0 * humidity_mixed) / (
+        1.006 + 1.86 * humidity_mixed
+    )
+    vapor_mixed = pressure * humidity_mixed / (molecular_ratio + humidity_mixed)
+    return max(0.0, saturation_vapor_pressure_kpa(temp_mixed) - vapor_mixed)
