@@ -1053,7 +1053,7 @@
           </label>
           <div class="soft-temperature-limits">
             <strong>Soft temperature limits for this stage</strong>
-            <label class="soft-temperature-toggle" title="When temperature exceeds the soft maximum, the boost starts small and grows every minute while temperature is flat or rising. The global temperature weight controls growth rate; Maximum fan boost is an absolute percentage-point cap. The fan limit still applies.">
+            <label class="soft-temperature-toggle" title="When temperature exceeds the soft maximum, the boost starts small and grows every minute while temperature is flat or rising. Maximum fan boost adds percentage points to the current fan request: +10 points changes 10% to 20%, or 20% to 30%. The stage fan maximum still applies.">
               <input type="checkbox" ${softTemperature.enabled === false ? "" : "checked"} data-soft-temperature-enabled-phase="${id}" />
               Enable soft temperature fan boost
             </label>
@@ -1066,7 +1066,7 @@
             <label>Maximum fan boost
               <input type="number" min="0" max="100" step="1" value="${softTemperature.max_boost_pct ?? 20}" data-soft-temperature-phase="${id}" data-soft-temperature-field="max_boost_pct" aria-label="${phase.name || `Phase ${id}`} maximum soft temperature fan boost in percentage points" />
             </label>
-            <span>Absolute cap for added fan speed in percentage points. The temperature weight controls growth rate; the stage fan limit also applies.</span>
+            <span>Adds points to the current fan request: +10 points changes 10% to 20%, or 20% to 30%. The stage fan maximum can limit the result.</span>
           </div>
           <p>The hard maximum temperature remains a separate safety override. Day runs from lights on to lights off, including overnight schedules.</p>
         </div>

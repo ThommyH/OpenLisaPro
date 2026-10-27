@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.58] - 2026-10-27
+
+### Changed
+
+- Clarify in English and German that Maximum fan boost adds percentage points to the current fan request, with examples.
+
 ## [0.1.57] - 2026-10-27
 
 ### Changed

@@ -247,7 +247,7 @@
       "Maximum °C": "Maximum °C",
       "Maximum fan boost": "Maximale Lüfteranhebung",
       "Temperature boost growth %/°C": "Anstiegsrate Temperaturanhebung %/°C",
-      "Absolute cap for added fan speed in percentage points. The temperature weight controls growth rate; the stage fan limit also applies.": "Absolute Begrenzung der zusätzlichen Lüfterleistung in Prozentpunkten. Die Temperaturgewichtung bestimmt die Anstiegsrate; das Lüftermaximum der Phase gilt ebenfalls.",
+      "Adds points to the current fan request: +10 points changes 10% to 20%, or 20% to 30%. The stage fan maximum can limit the result.": "Addiert Prozentpunkte zur aktuellen Lüfteranforderung: +10 Punkte erhöhen 10 % auf 20 % oder 20 % auf 30 %. Das Lüftermaximum der Phase kann den Wert begrenzen.",
       "The hard maximum temperature remains a separate safety override. Day runs from lights on to lights off, including overnight schedules.": "Die harte Maximaltemperatur bleibt ein separater Sicherheitsschutz. Der Tagmodus läuft von Licht-an bis Licht-aus, auch bei Zeitplänen über Mitternacht.",
       "Reset stage to its factory defaults?": "Phase auf Werkseinstellungen zurücksetzen?",
       "Done": "Fertig",
