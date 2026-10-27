@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.52] - 2026-10-27
+
+### Changed
+
+- Render the DLI unit in white for better contrast in the dashboard readings.
+
 ## [0.1.51] - 2026-10-27
 
 ### Changed

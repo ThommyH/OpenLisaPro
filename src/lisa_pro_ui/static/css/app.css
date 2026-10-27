@@ -403,7 +403,7 @@ main > * { width: 100%; min-width: 0; max-width: 100%; }
 }
 
 .dli-unit {
-  color: var(--ink-dim);
+  color: var(--ink);
   font-size: 0.55em;
   font-weight: 400;
   letter-spacing: normal;
