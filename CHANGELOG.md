@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.59] - 2026-10-27
+
+### Added
+
+- Add the OLP logo to the dashboard, browser icon, and English and German project pages.
+
 ## [0.1.58] - 2026-10-27
 
 ### Changed

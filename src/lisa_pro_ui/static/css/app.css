@@ -163,6 +163,10 @@ body.day-mode .atmosphere {
   animation: rise-in 0.7s ease both;
 }
 
+.brand-lockup { display: flex; align-items: center; gap: 0.9rem; }
+.brand-logo { width: clamp(3.25rem, 7vw, 4rem); height: auto; border-radius: 1rem; box-shadow: 0 0.5rem 1.6rem #0005; }
+.brand-copy { min-width: 0; }
+
 .eyebrow {
   margin: 0;
   color: var(--ink-dim);
@@ -1754,5 +1758,7 @@ input:focus {
 .ha-readonly { opacity: .58; }
 
 @media (max-width: 700px) {
+  .brand-lockup { gap: 0.6rem; }
+  .brand-logo { width: 2.8rem; border-radius: 0.8rem; }
   .ha-banner { justify-self: start; }
 }

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="20" y1="16" x2="238" y2="244" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#17472f"/>
+      <stop offset="1" stop-color="#061810"/>
+    </linearGradient>
+    <linearGradient id="lime" x1="54" y1="52" x2="202" y2="200" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#e4ff9a"/>
+      <stop offset="1" stop-color="#9ce85b"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="5" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  <rect x="8" y="8" width="240" height="240" rx="68" fill="url(#bg)"/>
+  <rect x="10" y="10" width="236" height="236" rx="66" fill="none" stroke="#b8f255" stroke-opacity=".25" stroke-width="4"/>
+  <path d="M128 66c-3-29-30-46-58-39 4 30 29 48 58 42 29 6 54-12 58-42-28-7-55 10-58 39Z" fill="none" stroke="url(#lime)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <path d="M128 65v30" stroke="#cfff7b" stroke-width="8" stroke-linecap="round"/>
+  <circle cx="128" cy="100" r="5" fill="#e4ff9a"/>
+  <text x="128" y="199" text-anchor="middle" fill="url(#lime)" font-family="DejaVu Sans,Arial,sans-serif" font-size="82" font-weight="800" letter-spacing="-5">OLP</text>
+  <path d="M52 216h152" stroke="#9ce85b" stroke-opacity=".48" stroke-width="4" stroke-linecap="round"/>
+</svg>

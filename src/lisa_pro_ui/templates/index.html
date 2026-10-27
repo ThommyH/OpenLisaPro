@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#061a13" />
     <title>OpenLisaPro</title>
     <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}" />
+    <link rel="icon" type="image/png" sizes="256x256" href="{{ url_for('static', filename='olp-logo.png') }}" />
     <link rel="mask-icon" href="{{ url_for('static', filename='favicon-mask.svg') }}" color="#b8f255" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -24,8 +25,11 @@
 
     <header class="topbar">
       <div class="brand-lockup">
-        <p class="eyebrow">Open growbox control</p>
-        <h1 class="brand">Open<span>LisaPro</span></h1>
+        <img class="brand-logo" src="{{ url_for('static', filename='olp-logo.png') }}" alt="OLP logo" width="64" height="64" />
+        <div class="brand-copy">
+          <p class="eyebrow">Open growbox control</p>
+          <h1 class="brand">Open<span>LisaPro</span></h1>
+        </div>
       </div>
       <div class="topbar-right">
         <div class="link-status" id="linkStatus">

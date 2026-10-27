@@ -2,6 +2,8 @@
 
 [English](README.md) | Deutsch
 
+<p align="center"><img src="src/lisa_pro_ui/static/olp-logo.png" alt="OpenLisaPro OLP-Logo" width="192" height="192"></p>
+
 OpenLisaPro ist ein selbst gehostetes Flask-Dashboard und ein Python-Client für Lisa-Pro- und LuminaGrowX-Growboxen. Es zeigt Klima- und Gerätestatus in Echtzeit an, verwaltet lokale Steuerungseinstellungen und kann einen VPD-basierten Lüfterregler ausführen.
 
 Der Browser kommuniziert mit der lokalen Flask-Anwendung, die Anfragen an die Growbox weiterleitet. Aktuelle lokale Steuereinstellungen bleiben in `control.json`. Sensormessungen, Reglerstatus, Einstellungssnapshots und Reglerereignisse werden dauerhaft in `openlisapro.sqlite3` gespeichert. Das Diagramm zeigt die letzten 48 Stunden. Den vollständigen Datensatz kannst du über `/api/data/export?format=jsonl` oder `/api/data/export?format=csv` herunterladen.
