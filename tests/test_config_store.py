@@ -136,7 +136,7 @@ def test_led_normalize_and_seed(tmp_path: Path):
         ]
     )
     assert store2.get()["led"]["1"]["day"] == 35.0
-    assert store2.get()["led"]["1"]["day_silent"] == 35.0
+    assert store2.get()["led"]["1"]["day_silent"] == 17.5
     assert store2.get()["led"]["1"]["night"] == 0.0
     assert store2.get()["led"]["1"]["night_silent"] == 0.0
     assert store2.get()["vpd_targets"]["1"]["day"]["vpd_max"] == 1.0

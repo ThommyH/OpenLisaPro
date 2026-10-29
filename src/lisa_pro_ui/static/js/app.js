@@ -980,12 +980,15 @@
       const softTemperature = softTemperatureMap[id] || {};
       const scheduleTime = (value, fallback) =>
         typeof value === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : fallback;
-      const rows = MODES.map((mode) => {
+      const rows = [["Day", ["day", "day_silent"]], ["Night", ["night", "night_silent"]]].map(([period, modes]) => `
+        <section class="stage-period-group">
+          <h4>${period}</h4>
+          ${modes.map((mode) => {
         const lim = (limits[id] && limits[id][mode]) || {};
         const vpd = (vpdMap[id] && vpdMap[id][mode]) || {};
         const device = ((phase.settings || {})[mode]) || {};
-        const fanMin = lim.fan_min != null ? lim.fan_min : device.fan_min ?? 20;
-        const fanMax = lim.fan_max != null ? lim.fan_max : device.fan_max ?? 80;
+        const fanMin = lim.fan_min != null ? lim.fan_min : (mode.endsWith("silent") ? 10 : device.fan_min ?? 20);
+        const fanMax = lim.fan_max != null ? lim.fan_max : (mode.endsWith("silent") ? 25 : device.fan_max ?? 80);
         const vpdMin = vpd.vpd_min != null ? vpd.vpd_min : device.vpd_min ?? 0.8;
         const vpdMax = vpd.vpd_max != null ? vpd.vpd_max : device.vpd_max ?? 1.2;
         const ledBlock =
@@ -995,7 +998,7 @@
                 mode,
                 value: (ledMap[id] && ledMap[id][mode] != null)
                   ? ledMap[id][mode]
-                  : device.led ?? (mode === "day_silent" ? ((phase.settings || {}).day || {}).led ?? 40 : 40),
+                  : mode === "day_silent" ? (((phase.settings || {}).day || {}).led ?? 40) * 0.5 : device.led ?? 40,
                 label: "LED",
               })
             : mode === "night" || mode === "night_silent"
@@ -1035,7 +1038,8 @@
             ${ledBlock}
           </div>
         </div>`;
-      }).join("");
+          }).join("")}
+        </section>`).join("");
       card.innerHTML = `
         <div class="phase-card-head">
           <h3>${phase.name || `Phase ${id}`}</h3>

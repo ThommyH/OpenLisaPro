@@ -149,10 +149,13 @@ class ConfigStore:
                     m = settings.get(mode) or settings.get(source_mode) or {}
                     if mode not in bucket:
                         source_limits = bucket.get(source_mode) or {}
-                        bucket[mode] = {
-                            "fan_min": float(source_limits.get("fan_min", m.get("fan_min", 20))),
-                            "fan_max": float(source_limits.get("fan_max", m.get("fan_max", 80))),
-                        }
+                        if mode in ("day_silent", "night_silent"):
+                            bucket[mode] = {"fan_min": 10.0, "fan_max": 25.0}
+                        else:
+                            bucket[mode] = {
+                                "fan_min": float(source_limits.get("fan_min", m.get("fan_min", 20))),
+                                "fan_max": float(source_limits.get("fan_max", m.get("fan_max", 80))),
+                            }
                         changed = True
                     if mode not in vpd_bucket:
                         source_targets = vpd_bucket.get(source_mode) or {}
@@ -167,8 +170,9 @@ class ConfigStore:
                             led_bucket[mode] = 0.0
                         else:
                             led_value = m.get("led")
-                            if led_value is None and mode == "day_silent":
-                                led_value = (((phase.get("settings") or {}).get("day") or {}).get("led", 0))
+                            if mode == "day_silent":
+                                day_led = (((phase.get("settings") or {}).get("day") or {}).get("led", 0))
+                                led_value = day_led * 0.5
                             led_bucket[mode] = float(max(0.0, min(100.0, float(led_value or 0))))
                         changed = True
             if changed:

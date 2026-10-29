@@ -273,9 +273,9 @@ def test_soft_temperature_high_adds_small_fan_correction_inside_vpd_band(tmp_pat
 
     state = controller.snapshot()["state"]
     assert 0.8 <= state["vpd_inside"] <= 1.2
-    assert state["temperature_adjustment_pct"] == 2.0
+    assert state["temperature_adjustment_pct"] == 5.0
     assert state["temperature_soft_active"] is True
-    assert state["fan_ramp_target"] == 22
+    assert state["fan_ramp_target"] == 25
 
 
 def test_soft_temperature_respects_per_stage_maximum_fan_boost(tmp_path):
@@ -330,9 +330,9 @@ def test_soft_temperature_hot_adds_fan_correction_outside_vpd_band_and_respects_
     state = controller.snapshot()["state"]
     assert not 0.8 <= state["vpd_inside"] <= 1.2
     assert state["temperature_soft_active"] is True
-    assert state["temperature_adjustment_pct"] == 2.0
-    assert state["fan_vpd_request"] == 30.0
-    assert state["fan_ramp_target"] == 32
+    assert state["temperature_adjustment_pct"] == 5.0
+    assert state["fan_vpd_request"] == 20.0
+    assert state["fan_ramp_target"] == 25
 
     controller.store.update({"temperature_limits": {"0": {"max_temp_c": 25}}})
     TemperatureProtectionClient.status_data.update({"humi_rh": 70.0})
@@ -364,9 +364,9 @@ def test_soft_temperature_hot_prevents_unreachable_vpd_backoff(tmp_path):
     controller._tick(controller.store.get())
 
     state = controller.snapshot()["state"]
-    assert state["temperature_adjustment_pct"] == 4.0
+    assert state["temperature_adjustment_pct"] == 5.0
     assert state["throttling"] is False
-    assert state["fan_ramp_target"] >= 24
+    assert state["fan_ramp_target"] >= 25
 
 
 def test_disabled_soft_temperature_limits_do_not_adjust_fan(tmp_path):

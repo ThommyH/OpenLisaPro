@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.61] - 2026-10-29
+
+### Changed
+
+- Group Day with Day silent and Night with Night silent in stage controls. Default silent fan limits to 10–25% and set Day silent LED to half the Day level.
+
 ## [0.1.60] - 2026-10-29
 
 ### Changed
