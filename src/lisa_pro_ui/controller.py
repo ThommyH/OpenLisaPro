@@ -32,7 +32,9 @@ TEMPERATURE_LED_REDUCTION_FACTOR = 0.5
 TEMPERATURE_LED_MIN_PCT = 20.0
 TEMPERATURE_LED_STEP_PCT = 10.0
 TEMPERATURE_RECOVERY_MARGIN_C = 0.5
-SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 60.0
+# Give each fan level time to affect the growbox temperature before adjusting
+# the soft-limit boost again.
+SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 300.0
 SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C = 0.1
 SOFT_TEMPERATURE_BOOST_STEP_PCT = 10.0
 SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 5.0
@@ -838,8 +840,9 @@ class FanPidController:
     ) -> float:
         """Adjust a percentage-point fan bonus using temperature trend.
 
-        The stage setting is an absolute cap. Temperature excess and the global
-        weight control the per-minute growth step; a falling trend backs off.
+        The stage setting is an absolute cap. When temperature stays flat or
+        rises, move toward that cap even if the temperature excess is small;
+        back off only after a clear temperature decrease.
         """
         if not hot or temperature_c is None or soft_max_c is None:
             self._reset_soft_temperature_boost()
@@ -860,18 +863,20 @@ class FanPidController:
             max(0.0, float(max_available_pct)),
             max(0.0, float(max_stage_boost_pct)),
         )
-        temperature_demand = max(
-            0.0, (float(temperature_c) - float(soft_max_c)) * float(weight_pct_per_c)
-        )
-        if target_boost <= 0.0 or temperature_demand <= 0.0:
+        if target_boost <= 0.0:
             self._reset_soft_temperature_boost()
             return 0.0
 
-        boost_step = min(SOFT_TEMPERATURE_BOOST_STEP_PCT, temperature_demand)
+        boost_step = min(
+            SOFT_TEMPERATURE_BOOST_STEP_PCT,
+            max(0.0, float(weight_pct_per_c)),
+        )
+        if boost_step <= 0.0:
+            return round(min(self._soft_temperature_boost_pct, target_boost), 2)
 
         if self._soft_temperature_observed_at is None:
             self._soft_temperature_boost_pct = min(
-                SOFT_TEMPERATURE_INITIAL_BOOST_PCT, temperature_demand, target_boost
+                SOFT_TEMPERATURE_INITIAL_BOOST_PCT, target_boost
             )
             self._soft_temperature_observed_at = now
             self._soft_temperature_observed_c = float(temperature_c)

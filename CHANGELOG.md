@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.60] - 2026-10-29
+
+### Changed
+
+- Give each soft-temperature exhaust setting five minutes to affect temperature before adjusting the boost, and continue toward the configured boost cap when temperature stays flat or rises.
+
 ## [0.1.59] - 2026-10-27
 
 ### Added

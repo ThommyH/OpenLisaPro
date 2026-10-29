@@ -1,6 +1,6 @@
 [project]
 name = "lisa-pro-ui"
-version = "0.1.59"
+version = "0.1.60"
 description = "Modern Flask control UI and Python client for the Lisa Pro growbox API"
 readme = "README.md"
 requires-python = ">=3.9"

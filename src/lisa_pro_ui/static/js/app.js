@@ -1053,7 +1053,7 @@
           </label>
           <div class="soft-temperature-limits">
             <strong>Soft temperature limits for this stage</strong>
-            <label class="soft-temperature-toggle" title="When temperature exceeds the soft maximum, the boost starts small and grows every minute while temperature is flat or rising. Maximum fan boost adds percentage points to the current fan request: +10 points changes 10% to 20%, or 20% to 30%. The stage fan maximum still applies.">
+            <label class="soft-temperature-toggle" title="When temperature exceeds the soft maximum, the boost starts small and grows every five minutes while temperature is flat or rising. Maximum fan boost adds percentage points to the current fan request: +10 points changes 10% to 20%, or 20% to 30%. The stage fan maximum still applies.">
               <input type="checkbox" ${softTemperature.enabled === false ? "" : "checked"} data-soft-temperature-enabled-phase="${id}" />
               Enable soft temperature fan boost
             </label>
