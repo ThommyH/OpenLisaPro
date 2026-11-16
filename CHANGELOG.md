@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.62] - 2026-11-16
+
+### Changed
+
+- Estimate DLI below 200 mm by fitting a power curve to the established PPFD measurements at 200, 300, and 400 mm.
+
 ## [0.1.61] - 2026-10-29
 
 ### Changed

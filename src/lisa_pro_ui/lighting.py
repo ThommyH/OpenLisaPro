@@ -52,15 +52,34 @@ def estimate_dli(tof_mm: object, led_pct: object, on: object, off: object) -> fl
         return None
     if not math.isfinite(distance) or not math.isfinite(dimming):
         return None
-    if not (200 <= distance <= 400 and 0 <= dimming <= 100) or hours is None:
+    # Extrapolate modestly below the closest measured distance with an
+    # empirical power curve fitted to all three datasheet distances.
+    if not (150 <= distance <= 400 and 0 <= dimming <= 100) or hours is None:
         return None
     if dimming == 0:
         return 0.0
 
-    lower = max(measured_distance for measured_distance in _PPFD_BY_DISTANCE if measured_distance <= distance)
-    upper = min(measured_distance for measured_distance in _PPFD_BY_DISTANCE if measured_distance >= distance)
     dimming_points = (0, *_DIMMING_PCT)
-    lower_ppfd = _linear(dimming, dimming_points, (0, *_PPFD_BY_DISTANCE[lower]))
-    upper_ppfd = _linear(dimming, dimming_points, (0, *_PPFD_BY_DISTANCE[upper]))
-    ppfd = lower_ppfd if lower == upper else _linear(distance, (lower, upper), (lower_ppfd, upper_ppfd))
+    if distance < min(_PPFD_BY_DISTANCE):
+        measured_distances = tuple(_PPFD_BY_DISTANCE)
+        measured_ppfd = tuple(
+            _linear(dimming, dimming_points, (0, *_PPFD_BY_DISTANCE[measured_distance]))
+            for measured_distance in measured_distances
+        )
+        log_distances = tuple(math.log(value) for value in measured_distances)
+        log_ppfd = tuple(math.log(value) for value in measured_ppfd)
+        mean_log_distance = sum(log_distances) / len(log_distances)
+        mean_log_ppfd = sum(log_ppfd) / len(log_ppfd)
+        exponent = sum(
+            (x - mean_log_distance) * (y - mean_log_ppfd)
+            for x, y in zip(log_distances, log_ppfd)
+        ) / sum((x - mean_log_distance) ** 2 for x in log_distances)
+        coefficient = mean_log_ppfd - exponent * mean_log_distance
+        ppfd = math.exp(coefficient + exponent * math.log(distance))
+    else:
+        lower = max(measured_distance for measured_distance in _PPFD_BY_DISTANCE if measured_distance <= distance)
+        upper = min(measured_distance for measured_distance in _PPFD_BY_DISTANCE if measured_distance >= distance)
+        lower_ppfd = _linear(dimming, dimming_points, (0, *_PPFD_BY_DISTANCE[lower]))
+        upper_ppfd = _linear(dimming, dimming_points, (0, *_PPFD_BY_DISTANCE[upper]))
+        ppfd = lower_ppfd if lower == upper else _linear(distance, (lower, upper), (lower_ppfd, upper_ppfd))
     return ppfd * hours * 3600 / 1_000_000
