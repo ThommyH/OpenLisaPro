@@ -188,6 +188,7 @@ def test_controller_caps_target_using_outside_dew_point_at_inside_temperature(tm
 class TemperatureProtectionClient:
     status_data = {}
     phase_data = []
+    silent_data = {"enabled": True, "fanExhaustMin": 10, "fanExhaustMax": 80}
 
     def __enter__(self):
         return self
@@ -204,8 +205,20 @@ class TemperatureProtectionClient:
     def set_phases(self, payload):
         type(self).phase_data = deepcopy(payload["phases"])
 
+    def get_silent(self):
+        return deepcopy(type(self).silent_data)
+
+    def set_silent(self, settings):
+        type(self).silent_data = deepcopy(settings)
+        return deepcopy(type(self).silent_data)
+
 
 def make_temperature_controller(tmp_path):
+    TemperatureProtectionClient.silent_data = {
+        "enabled": True,
+        "fanExhaustMin": 10,
+        "fanExhaustMax": 80,
+    }
     TemperatureProtectionClient.phase_data = [
         {
             "id": 0,
@@ -628,3 +641,45 @@ def test_fan_command_preserves_newer_manual_led_setting(tmp_path):
     assert settings["led"] == 23.0
     assert settings["fan_min"] == 25
     assert settings["fan_max"] == 70
+
+
+def test_silent_fan_command_updates_global_silent_bounds(tmp_path):
+    class SilentClient:
+        settings = {
+            "enabled": True,
+            "startH": 22,
+            "startM": 0,
+            "endH": 6,
+            "endM": 0,
+            "fanExhaustMin": 25,
+            "fanExhaustMax": 75,
+            "fanCircMin": 20,
+            "fanCircMax": 40,
+            "pumpEnabled": False,
+        }
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get_silent(self):
+            return deepcopy(type(self).settings)
+
+        def set_silent(self, settings):
+            type(self).settings = deepcopy(settings)
+            return deepcopy(type(self).settings)
+
+    controller = FanPidController(
+        device_url="http://unused",
+        store=ConfigStore(tmp_path / "control.json"),
+        client_factory=SilentClient,
+    )
+
+    controller._apply_fan_band([], 0, "day_silent", 42, 42)
+
+    assert SilentClient.settings["fanExhaustMin"] == 42
+    assert SilentClient.settings["fanExhaustMax"] == 42
+    assert SilentClient.settings["enabled"] is True
+    assert SilentClient.settings["fanCircMin"] == 20

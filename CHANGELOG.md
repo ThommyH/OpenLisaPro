@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.65] - 2026-11-17
+
+### Fixed
+
+- Keep PID fan control active during silent mode by writing the live exhaust min/max command through the silent settings API.
+
 ## [0.1.64] - 2026-11-17
 
 ### Fixed

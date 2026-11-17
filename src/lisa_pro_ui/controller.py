@@ -787,6 +787,18 @@ class FanPidController:
         fan_min: float,
         fan_max: float,
     ) -> None:
+        if mode in ("day_silent", "night_silent"):
+            # Silent fan bounds live in the device's global silent settings,
+            # rather than its per-phase settings. Keep the same live command
+            # behavior by updating those bounds whenever the controller does.
+            with self._phase_write_lock:
+                with self._client_factory() as client:
+                    settings = client.get_silent()
+                    settings["fanExhaustMin"] = float(fan_min)
+                    settings["fanExhaustMax"] = float(fan_max)
+                    client.set_silent(settings)
+            return
+
         with self._phase_write_lock:
             with self._client_factory() as client:
                 latest = client.get_phases().get("phases") or []
