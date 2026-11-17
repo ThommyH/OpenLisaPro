@@ -255,12 +255,12 @@
             <div class="flow-arrow" aria-hidden="true">↓ <span>within limit · continue with VPD control</span></div>
             <div class="flow-node" data-flow-step="estimate-limit">
               <span class="flow-index">3</span>
-              <div><strong>Estimate the ventilation limit from outside dew point</strong><span>Evaluate outside-air moisture at the inside temperature to find the highest VPD ventilation can achieve. If outside dew point is unavailable, keep the selected target.</span></div>
+              <div><strong>Estimate the ventilation limit from outside dew point</strong><span>Evaluate outside-air moisture at the inside temperature to estimate the highest VPD ventilation can achieve. Treat differences up to 0.10 kPa as sensor and model tolerance.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-decision" data-flow-step="target-check"><strong>Is the selected target above that limit?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome" data-flow-branch="target-limited"><b>Yes · Outside-air limited</b><span>Cap the effective target at the ventilation limit and show “Outside-air limited.” Raise the fan only when the mixed-air estimate predicts that more ventilation will move VPD toward this capped target.</span></div>
+              <div class="flow-outcome" data-flow-branch="target-limited"><b>Yes · Outside-air limited</b><span>When the target is more than 0.10 kPa above the estimated ventilation limit, cap the effective target there. Raise the fan through the configured range whenever the mixed-air estimate predicts that more ventilation will move VPD toward the target.</span></div>
               <div class="flow-outcome" data-flow-branch="target-reachable"><b>No</b><span>Keep the selected target.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>effective target</span></div>
@@ -278,7 +278,7 @@
             <div class="flow-arrow" aria-hidden="true">↓ <span>combined request</span></div>
             <div class="flow-node" data-flow-step="apply-ramp">
               <span class="flow-index">4</span>
-              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If the mixed-air estimate says more ventilation will not help, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps unless the soft maximum temperature is exceeded.</span></div>
+              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate, up to the stage fan maximum. If the mixed-air estimate says more ventilation will not help, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps unless the soft maximum temperature is exceeded.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-node flow-result" data-flow-step="write-command">
@@ -306,7 +306,7 @@
               <div><dt>idle</dt><dd>The controller has not completed its first control cycle yet.</dd></div>
               <div><dt>disabled</dt><dd>Local PID is off. The growbox uses the stage’s configured fan range.</dd></div>
               <div><dt>tracking</dt><dd>The controller is within its limits and no new fan command was needed this cycle.</dd></div>
-              <div><dt>Outside-air limited</dt><dd>Outside air is too moist for ventilation alone to reach the selected VPD target. The controller uses the lower estimated ventilation limit and raises the fan when the mixed-air estimate predicts VPD will move toward that limit.</dd></div>
+              <div><dt>Outside-air limited</dt><dd>The selected target is more than 0.10 kPa above the estimated ventilation limit. The controller uses that limit as its effective target, while increasing the fan through the configured range when the mixed-air estimate predicts VPD will move toward it.</dd></div>
               <div><dt>applied</dt><dd>A new fan command was sent to the growbox.</dd></div>
               <div><dt>ramping</dt><dd>The fan command is moving gradually toward the requested speed at the configured ramp rate.</dd></div>
               <div><dt>High temperature</dt><dd>Temperature protection takes priority over VPD and commands the fan to its configured maximum. LED power may be reduced temporarily.</dd></div>

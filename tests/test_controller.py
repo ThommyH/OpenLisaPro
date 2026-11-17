@@ -187,6 +187,15 @@ def test_controller_caps_target_using_outside_dew_point_at_inside_temperature(tm
     assert state["fan_ramp_target"] > 10
     assert state["fan_command"] > 10
 
+    # A small gap between the target and dew-point estimate is within sensor
+    # and model tolerance, so retain the selected target in the UI.
+    store.update({"vpd_targets": {"0": {"day": {"vpd_min": 1.30, "vpd_max": 1.7}}}})
+    controller._tick(store.get())
+    state = controller.snapshot()["state"]
+    assert state["vpd_target_raw"] == 1.3
+    assert state["vpd_target"] == 1.3
+    assert state["vpd_reachable"] is True
+
 
 class TemperatureProtectionClient:
     status_data = {}
@@ -260,7 +269,7 @@ def make_temperature_controller(tmp_path):
     )
 
 
-def test_vpd_fan_assist_uses_mixed_air_direction_and_quiet_cap(tmp_path):
+def test_vpd_fan_assist_uses_mixed_air_direction_and_configured_range(tmp_path):
     controller = make_temperature_controller(tmp_path)
     controller.store.update(
         {
@@ -283,10 +292,9 @@ def test_vpd_fan_assist_uses_mixed_air_direction_and_quiet_cap(tmp_path):
 
     controller._tick(controller.store.get())
     beneficial = controller.snapshot()["state"]
-    assert beneficial["fan_vpd_request"] == 30.0
+    assert 30.0 < beneficial["fan_vpd_request"] <= 80.0
 
-    # Same-temperature, drier intake air would raise VPD further, so the
-    # controller keeps the configured minimum instead of making the tent loud.
+    # When additional ventilation moves VPD away from target, use the minimum.
     TemperatureProtectionClient.status_data.update({"temp_out_c": 25.0, "humi_out_rh": 30.0})
     controller._tick(controller.store.get())
     not_beneficial = controller.snapshot()["state"]

@@ -2,6 +2,13 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.68] - 2026-11-18
+
+### Fixed
+
+- Avoid labeling near-boundary VPD targets outside-air limited when they are within 0.10 kPa of the estimated ventilation limit.
+- Let beneficial VPD control use the configured stage fan range instead of stopping at a 10-point boost above the minimum.
+
 ## [0.1.67] - 2026-11-18
 
 ### Fixed

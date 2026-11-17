@@ -45,7 +45,9 @@ SOFT_TEMPERATURE_MIN_BOOST_PCT = 5.0
 PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
 VPD_FAN_MIXING_FRACTION = 0.10
 VPD_FAN_MIN_BENEFIT_KPA = 0.02
-VPD_FAN_MAX_BOOST_PCT = 10.0
+# Small dew-point/VPD model and sensor differences should not make the UI
+# claim a target is unreachable when the estimated limit is nearly there.
+OUTSIDE_VPD_LIMIT_TOLERANCE_KPA = 0.10
 
 PHASE_NAME_HINTS = (
     ("flower", ("flower", "blüte", "bluete", "blute", "bloom")),
@@ -320,8 +322,15 @@ class FanPidController:
         # moisture at the inside temperature to estimate the highest VPD that
         # ventilation alone can produce; outdoor VPD itself is temperature-
         # dependent and cannot be compared directly with the inside target.
-        reachable = ventilation_vpd_limit is None or target_raw <= ventilation_vpd_limit
-        target = min(target_raw, ventilation_vpd_limit) if ventilation_vpd_limit is not None else target_raw
+        reachable = (
+            ventilation_vpd_limit is None
+            or target_raw <= ventilation_vpd_limit + OUTSIDE_VPD_LIMIT_TOLERANCE_KPA
+        )
+        target = (
+            target_raw
+            if reachable or ventilation_vpd_limit is None
+            else ventilation_vpd_limit
+        )
         reason = "tracking" if reachable else "target_limited_by_outside_dew_point"
 
         fan_actual = status.get("fan_pct")
@@ -514,11 +523,9 @@ class FanPidController:
         desired = self._map_pid_to_fan(
             pid_out, fan_min, fan_max, fan_error, deadband=deadband
         )
-        # A small VPD correction is preferable to a loud exhaust response. The
-        # configured fan minimum remains the quiet baseline; temperature
-        # protection is applied separately below.
-        vpd_fan_ceiling = min(fan_max, fan_min + VPD_FAN_MAX_BOOST_PCT)
-        desired = min(desired, vpd_fan_ceiling)
+        # The configured fan minimum is the quiet baseline. Let the PID use
+        # the configured fan range when mixed-air estimates show ventilation
+        # can move VPD toward target; stage limits and ramping bound the request.
         vpd_fan_request = desired
 
         # Soft temperature control is a gradual feedback boost above the VPD

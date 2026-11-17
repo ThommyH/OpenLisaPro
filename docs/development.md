@@ -27,13 +27,15 @@ Build Docker images tagged with the package version and `latest`:
 make build
 ```
 
-To publish both tags to the configured registry, run:
+To publish both tags to the configured registry and update the local Dockhand deployment, run:
 
 ```bash
 make publish
 ```
 
-The default registry (`192.168.178.69:5555`) serves plain HTTP. `make publish` uses a temporary BuildKit builder configured with `http = true`, then removes that builder. This avoids the Docker daemon's HTTPS-only error without changing Docker Desktop or daemon settings. Use `make build` for a local image build; use `make publish` to build and push. Override `REGISTRY` and `IMAGE_NAME` as needed. The package release version is embedded as `APP_VERSION`; the dashboard compares it with the latest version tag on GitHub.
+The default registry (`192.168.178.69:5555`) serves plain HTTP. `make publish` uses a temporary BuildKit builder configured with `http = true`, then removes that builder. This avoids the Docker daemon's HTTPS-only error without changing Docker Desktop or daemon settings. After pushing, it updates the Compose deployment managed by the local `dockhand` container and checks `/api/version` before returning. Use `make build` for a local image build; use `make publish` to build, push, and update Dockhand. Override `REGISTRY` and `IMAGE_NAME` as needed. The package release version is embedded as `APP_VERSION`; the dashboard compares it with the latest version tag on GitHub.
+
+To update the Dockhand deployment separately after an image is already published, run `scripts/update-dockhand.sh VERSION`. It reads the Compose project path and service from the running container's labels, runs Compose through Dockhand so the stack file remains in place, and verifies the deployed version.
 
 ## Release checklist
 
@@ -41,7 +43,7 @@ The default registry (`192.168.178.69:5555`) serves plain HTTP. `make publish` u
 2. Update the README, specifications, and [`CHANGELOG.md`](../CHANGELOG.md) when user-visible behavior changes.
 3. Run `uv sync --group dev`, `uv run python -m pytest -q`, and `uv build`.
 4. Commit the release changes and create an annotated tag matching the version, for example `0.1.21`.
-5. Build and publish the Docker image after committing: `make publish` embeds the package version and pushes the versioned image and `latest` to the configured registry.
+5. Build and publish the Docker image after committing: `make publish` embeds the package version, pushes the versioned image and `latest` to the configured registry, and updates the local Dockhand deployment.
 6. Push the commit and tag, then publish the GitHub release with concise release notes.
 
 ## Project layout

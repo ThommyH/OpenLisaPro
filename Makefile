@@ -17,3 +17,4 @@ publish: docker-publish
 
 docker-publish:
 	DOCKER="$(DOCKER)" REGISTRY="$(REGISTRY)" IMAGE_NAME="$(IMAGE_NAME)" VERSION="$(VERSION)" ./scripts/publish-image.sh
+	DOCKER="$(DOCKER)" VERSION="$(VERSION)" ./scripts/update-dockhand.sh "$(VERSION)"
