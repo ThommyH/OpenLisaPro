@@ -34,9 +34,12 @@ TEMPERATURE_LED_STEP_PCT = 10.0
 TEMPERATURE_RECOVERY_MARGIN_C = 0.5
 # Give each fan level time to affect the growbox temperature before adjusting
 # the soft-limit boost again.
-SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 300.0
-SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C = 0.1
-SOFT_TEMPERATURE_BOOST_STEP_PCT = 10.0
+SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 600.0
+SOFT_TEMPERATURE_TRIGGER_MARGIN_C = 0.2
+SOFT_TEMPERATURE_RELEASE_MARGIN_C = 0.2
+SOFT_TEMPERATURE_RISE_THRESHOLD_C = 0.2
+SOFT_TEMPERATURE_COOLING_THRESHOLD_C = 0.3
+SOFT_TEMPERATURE_BOOST_STEP_PCT = 5.0
 SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 5.0
 SOFT_TEMPERATURE_MIN_BOOST_PCT = 5.0
 PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
@@ -524,11 +527,25 @@ class FanPidController:
         # below takes priority.
         soft_min = (temperature_soft_limits or {}).get("min_temp_c")
         soft_max = (temperature_soft_limits or {}).get("max_temp_c")
+        soft_boost_key = self._soft_temperature_key
+        soft_boost_active = bool(
+            soft_boost_key is not None
+            and soft_boost_key[0] == int(phase_id)
+            and soft_boost_key[1] == mode
+            and soft_boost_key[2] == soft_max
+            and self._soft_temperature_boost_pct > 0
+        )
         soft_temperature_hot = (
             not temperature_active
             and temperature_inside is not None
             and soft_max is not None
-            and temperature_inside > soft_max
+            and (
+                temperature_inside >= soft_max + SOFT_TEMPERATURE_TRIGGER_MARGIN_C
+                or (
+                    soft_boost_active
+                    and temperature_inside > soft_max - SOFT_TEMPERATURE_RELEASE_MARGIN_C
+                )
+            )
         )
         temperature_adjustment = self._soft_temperature_boost(
             phase_id=phase_id,
@@ -900,12 +917,12 @@ class FanPidController:
         elif now - self._soft_temperature_observed_at >= SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S:
             previous_temp = self._soft_temperature_observed_c
             trend = float(temperature_c) - float(previous_temp if previous_temp is not None else temperature_c)
-            if trend >= -SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C:
+            if trend >= SOFT_TEMPERATURE_RISE_THRESHOLD_C:
                 self._soft_temperature_boost_pct = min(
                     target_boost,
                     self._soft_temperature_boost_pct + boost_step,
                 )
-            elif trend < -SOFT_TEMPERATURE_RESPONSE_THRESHOLD_C:
+            elif trend <= -SOFT_TEMPERATURE_COOLING_THRESHOLD_C:
                 self._soft_temperature_boost_pct = max(
                     min(SOFT_TEMPERATURE_MIN_BOOST_PCT, target_boost),
                     self._soft_temperature_boost_pct - boost_step,

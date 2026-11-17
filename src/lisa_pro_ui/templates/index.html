@@ -272,7 +272,7 @@
             <div class="flow-arrow" aria-hidden="true">↓ <span>requested speed</span></div>
             <div class="flow-decision" data-flow-step="soft-temperature-check"><strong>Is inside temperature above the soft maximum?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Soft limit exceeded</b><span>Start with a small fan correction. Every five minutes, increase it when temperature is flat or rising, or back off when temperature falls. The global temperature weight controls growth rate; the per-stage boost is an absolute percentage-point cap, subject to the stage fan limit.</span></div>
+              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Soft limit exceeded</b><span>Start with a small fan correction 0.2°C above the soft maximum and keep it active until temperature falls 0.2°C below the limit. Every ten minutes, add up to 5 points after a rise of at least 0.2°C, or back off by up to 5 after a drop of at least 0.3°C. Smaller changes leave the fan unchanged.</span></div>
               <div class="flow-outcome" data-flow-branch="soft-temperature-hold"><b>No</b><span>Keep the VPD fan request unchanged. A soft minimum never lowers the VPD request. The hard maximum remains a separate safety override.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>combined request</span></div>
@@ -358,8 +358,8 @@
               <label title="VPD error range treated as close enough to target. Increase to tolerate a wider VPD variation and reduce small fan adjustments; lower it to control more tightly, with a greater chance of frequent changes.">
                 Deadband <input class="mono" type="number" step="0.01" id="pidDeadband" />
               </label>
-              <label title="Controls how quickly soft temperature fan boost grows based on degrees above the soft maximum. Zero disables soft temperature boost; the per-stage maximum is an absolute percentage-point cap.">
-                Temperature boost growth %/°C <input class="mono" type="number" min="0" max="20" step="0.1" id="pidTemperatureWeight" />
+              <label title="Sets the maximum soft temperature fan adjustment at each ten-minute review. Small temperature changes are ignored. Zero disables soft temperature boost; the per-stage maximum is an absolute percentage-point cap.">
+                Temperature boost step <input class="mono" type="number" min="0" max="20" step="0.1" id="pidTemperatureWeight" />
               </label>
             </div>
           </details>

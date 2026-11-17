@@ -341,6 +341,51 @@ def test_soft_temperature_respects_per_stage_maximum_fan_boost(tmp_path):
     assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 3.0
 
 
+def test_soft_temperature_boost_ignores_small_changes_and_moves_in_small_steps(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+
+    def adjust(now, temperature):
+        return controller._soft_temperature_boost(
+            phase_id=0,
+            mode="day",
+            temperature_c=temperature,
+            soft_max_c=25.0,
+            hot=True,
+            max_available_pct=80.0,
+            max_stage_boost_pct=50.0,
+            weight_pct_per_c=15.0,
+            now=now,
+        )
+
+    assert adjust(0, 26.0) == 5.0
+    assert adjust(600, 26.1) == 5.0  # +0.1°C is within sensor noise.
+    assert adjust(1200, 26.31) == 10.0  # +0.21°C sustained rise adds 5 points.
+    assert adjust(1800, 26.0) == 5.0  # A clear 0.31°C drop backs off 5 points.
+    assert adjust(2400, 25.9) == 5.0  # A small drop does not trigger another change.
+
+
+def test_soft_temperature_boost_uses_hysteresis_near_limit(tmp_path):
+    controller = make_temperature_controller(tmp_path)
+    controller.store.update(
+        {
+            "temperature_limits": {},
+            "temperature_soft_limits": {"0": {"max_temp_c": 25.0}},
+        }
+    )
+    TemperatureProtectionClient.status_data.update({"temp_c": 25.3, "humi_rh": 60.0})
+
+    controller._tick(controller.store.get())
+    assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 5.0
+
+    TemperatureProtectionClient.status_data["temp_c"] = 25.1
+    controller._tick(controller.store.get())
+    assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 5.0
+
+    TemperatureProtectionClient.status_data["temp_c"] = 24.8
+    controller._tick(controller.store.get())
+    assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 0.0
+
+
 def test_soft_temperature_low_does_not_reduce_vpd_fan_request(tmp_path):
     controller = make_temperature_controller(tmp_path)
     controller.store.update(

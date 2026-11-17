@@ -116,18 +116,18 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
     assert hot_state["temperature_adjustment_pct"] == 5.0
     assert hot_state["fan_ramp_target"] > hot_state["fan_vpd_request"]
 
-    for expected_boost in (15.0, 25.0):
-        controller._soft_temperature_observed_at = time.time() - 301
+    for expected_boost in (10.0, 15.0):
+        controller._soft_temperature_observed_at = time.time() - 601
         controller._soft_temperature_observed_c = 26.0
         controller._tick(controller.store.get())
         rising_state = client.get("/api/control").get_json()["state"]
         assert rising_state["temperature_soft_triggered"] is True
         assert rising_state["temperature_adjustment_pct"] == expected_boost
 
-    # Flat temperature means the current boost has not cooled the growbox
-    # below the soft limit yet, so continue increasing until capped.
-    for expected_boost in (30.0, 30.0, 30.0):
-        controller._soft_temperature_observed_at = time.time() - 301
+    # Flat temperature is not evidence that more fan is worthwhile, so keep
+    # the current boost instead of continuing to ramp it upward.
+    for expected_boost in (15.0, 15.0, 15.0):
+        controller._soft_temperature_observed_at = time.time() - 601
         controller._soft_temperature_observed_c = 27.0
         controller._tick(controller.store.get())
         steady_state = client.get("/api/control").get_json()["state"]
@@ -137,11 +137,11 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
 
     # Back off only after a measured decrease across the observation window.
     FakeLisaProClient.current_status["temp_c"] = 26.7
-    controller._soft_temperature_observed_at = time.time() - 301
+    controller._soft_temperature_observed_at = time.time() - 601
     controller._soft_temperature_observed_c = 27.0
     controller._tick(controller.store.get())
     falling_state = client.get("/api/control").get_json()["state"]
-    assert falling_state["temperature_adjustment_pct"] == 20.0
+    assert falling_state["temperature_adjustment_pct"] == 10.0
 
     # Lowering the soft maximum creates a fresh attempt immediately, even
     # though the prior temperature observation was flat.

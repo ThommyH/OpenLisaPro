@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.66] - 2026-11-17
+
+### Changed
+
+- Add hysteresis to soft temperature fan control and ignore small temperature changes so the fan does not hunt around the threshold.
+
 ## [0.1.65] - 2026-11-17
 
 ### Fixed
