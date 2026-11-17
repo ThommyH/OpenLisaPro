@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.64] - 2026-11-17
+
+### Fixed
+
+- Preserve the growbox's configured exhaust fan bounds when enabling silent mode so the device applies its silent limits directly.
+
 ## [0.1.63] - 2026-11-17
 
 ### Fixed

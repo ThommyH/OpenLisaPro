@@ -503,6 +503,10 @@ def create_app(
             with client() as c:
                 settings = c.get_silent()
                 enabled = not bool(settings.get("enabled"))
+                # Keep the device's configured silent bounds. The growbox applies
+                # fanExhaustMin/Max as soon as silent mode is enabled, so replacing
+                # them with the local phase limits here can delay or prevent the
+                # intended fan reduction.
                 settings["enabled"] = enabled
                 updated = c.set_silent(settings)
             return _ok({**updated, "enabled": enabled})

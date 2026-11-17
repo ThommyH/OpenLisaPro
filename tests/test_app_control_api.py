@@ -107,6 +107,64 @@ def test_control_get_and_post(tmp_path: Path):
     assert again["temperature_soft_limits"]["0"]["max_temp_c"] == 26.0
 
 
+def test_silent_toggle_preserves_device_silent_fan_bounds(tmp_path, monkeypatch):
+    class FakeClient:
+        silent = {
+            "enabled": False,
+            "startH": 0,
+            "startM": 0,
+            "endH": 23,
+            "endM": 59,
+            "fanExhaustMin": 25,
+            "fanExhaustMax": 75,
+            "fanCircMin": 20,
+            "fanCircMax": 40,
+            "pumpEnabled": False,
+        }
+        phases = [{
+            "id": 1,
+            "name": "Vegetative",
+            "schedule": {"on": "00:00", "off": "00:00"},
+            "settings": {"day": {"fan_min": 10, "fan_max": 85}},
+        }]
+
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get_silent(self):
+            return dict(self.silent)
+
+        def set_silent(self, settings):
+            self.silent = dict(settings)
+            return dict(self.silent)
+
+        def status(self):
+            return {"grow": {"phase": "Vegetative"}, "light_on": True, "silent": {"active": False}}
+
+        def get_phases(self):
+            return {"phases": self.phases}
+
+    monkeypatch.setattr("lisa_pro_ui.app.LisaProClient", FakeClient)
+    app = create_app(data_dir=tmp_path, start_controller=False)
+    app.config["CONTROL_STORE"].update(
+        {"fan_limits": {"1": {"day_silent": {"fan_min": 0, "fan_max": 15}}}}
+    )
+
+    response = app.test_client().post("/api/proxy/silent/toggle")
+
+    assert response.status_code == 200, response.get_json()
+    settings = response.get_json()
+    assert settings["enabled"] is True
+    assert settings["fanExhaustMin"] == 25
+    assert settings["fanExhaustMax"] == 75
+    assert settings["fanCircMin"] == 20
+    assert settings["fanCircMax"] == 40
 def test_control_history_route_returns_retained_samples(tmp_path: Path):
     app = create_app(data_dir=tmp_path, start_controller=False)
     controller = app.config["FAN_CONTROLLER"]
