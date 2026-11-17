@@ -59,6 +59,7 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
         "dew_out_c": None,
         "fan_pct": 10.0,
         "light_on": True,
+        "ntp_time": "12:00:00",
         "grow": {"phase": "Seedling"},
     }
     monkeypatch.setattr(app_module, "LisaProClient", FakeLisaProClient)

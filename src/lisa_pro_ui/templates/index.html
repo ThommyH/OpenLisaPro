@@ -260,7 +260,7 @@
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-decision" data-flow-step="target-check"><strong>Is the selected target above that limit?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome" data-flow-branch="target-limited"><b>Yes · Outside-air limited</b><span>Cap the effective target at the ventilation limit and show “Outside-air limited.” Do not drive the fan to chase the higher target.</span></div>
+              <div class="flow-outcome" data-flow-branch="target-limited"><b>Yes · Outside-air limited</b><span>Cap the effective target at the ventilation limit and show “Outside-air limited.” Raise the fan only when the mixed-air estimate predicts that more ventilation will move VPD toward this capped target.</span></div>
               <div class="flow-outcome" data-flow-branch="target-reachable"><b>No</b><span>Keep the selected target.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>effective target</span></div>
@@ -278,7 +278,7 @@
             <div class="flow-arrow" aria-hidden="true">↓ <span>combined request</span></div>
             <div class="flow-node" data-flow-step="apply-ramp">
               <span class="flow-index">4</span>
-              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If outside dew point makes the target unreachable, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps unless the soft maximum temperature is exceeded. The outside-air limit can trigger a back-off before the fan reaches its ceiling.</span></div>
+              <div><strong>Apply ramp and safety limits</strong><span>Move the command toward the requested speed at the configured ramp rate. If the mixed-air estimate says more ventilation will not help, or VPD fails to improve after the fan reaches its ceiling for the hold time, the controller backs off in steps unless the soft maximum temperature is exceeded.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓</div>
             <div class="flow-node flow-result" data-flow-step="write-command">
@@ -306,12 +306,12 @@
               <div><dt>idle</dt><dd>The controller has not completed its first control cycle yet.</dd></div>
               <div><dt>disabled</dt><dd>Local PID is off. The growbox uses the stage’s configured fan range.</dd></div>
               <div><dt>tracking</dt><dd>The controller is within its limits and no new fan command was needed this cycle.</dd></div>
-              <div><dt>Outside-air limited</dt><dd>Outside air is too moist for ventilation alone to reach the selected VPD target. The controller uses the lower estimated ventilation limit.</dd></div>
+              <div><dt>Outside-air limited</dt><dd>Outside air is too moist for ventilation alone to reach the selected VPD target. The controller uses the lower estimated ventilation limit and raises the fan when the mixed-air estimate predicts VPD will move toward that limit.</dd></div>
               <div><dt>applied</dt><dd>A new fan command was sent to the growbox.</dd></div>
               <div><dt>ramping</dt><dd>The fan command is moving gradually toward the requested speed at the configured ramp rate.</dd></div>
               <div><dt>High temperature</dt><dd>Temperature protection takes priority over VPD and commands the fan to its configured maximum. LED power may be reduced temporarily.</dd></div>
               <div><dt>Missing inside VPD</dt><dd>No valid inside VPD reading is available. The existing device setting is left in place while the controller retries.</dd></div>
-              <div><dt>Backing off · target unreachable</dt><dd>The target is above the estimated ventilation limit, or VPD failed to improve after the fan reached its upper limit for the hold time. The controller steps the fan down; an outside-air limit can trigger this before the fan reaches its ceiling.</dd></div>
+              <div><dt>Backing off · target unreachable</dt><dd>The mixed-air estimate says more ventilation will not move VPD toward the target, or VPD failed to improve after the fan reached its upper limit for the hold time. The controller steps the fan down.</dd></div>
               <div><dt>error</dt><dd>A control cycle failed. The controller logs the error and retries on its next cycle.</dd></div>
             </dl>
 

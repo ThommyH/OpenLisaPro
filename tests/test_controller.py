@@ -137,13 +137,13 @@ def test_controller_caps_target_using_outside_dew_point_at_inside_temperature(tm
         def status(self):
             return {
                 "temp_c": 23.0,
-                "humi_rh": 61.0,
+                "humi_rh": 75.0,
                 "dew_c": None,
-                "vpd_kpa": vpd_kpa(23.0, 61.0),
+                "vpd_kpa": vpd_kpa(23.0, 75.0),
                 "temp_out_c": 22.0,
                 "humi_out_rh": 59.0,
                 "dew_out_c": None,
-                "fan_pct": 46.0,
+                "fan_pct": 10.0,
                 "light_on": True,
             }
 
@@ -158,7 +158,7 @@ def test_controller_caps_target_using_outside_dew_point_at_inside_temperature(tm
         {
             "enabled": True,
             "vpd_targets": {"0": {"day": {"vpd_min": 1.5, "vpd_max": 1.7}}},
-            "fan_limits": {"0": {"day": {"fan_min": 0, "fan_max": 100}}},
+            "fan_limits": {"0": {"day": {"fan_min": 10, "fan_max": 100}}},
             "pid": {
                 "kp": 70,
                 "ki": 0,
@@ -166,6 +166,7 @@ def test_controller_caps_target_using_outside_dew_point_at_inside_temperature(tm
                 "ramp_pct_per_min": 20,
                 "interval_s": 5,
                 "deadband_kpa": 0.03,
+                "unreachable_hold_s": 1,
             },
         }
     )
@@ -175,14 +176,16 @@ def test_controller_caps_target_using_outside_dew_point_at_inside_temperature(tm
         client_factory=FakeClient,
     )
 
+    controller._unreachable_since = time.monotonic() - 2
     controller._tick(store.get())
     state = controller.snapshot()["state"]
 
     assert state["vpd_target_raw"] == 1.5
     assert abs(state["vpd_target"] - 1.25) < 0.02
     assert state["vpd_reachable"] is False
-    assert state["fan_ramp_target"] < 15
-    assert state["fan_command"] < 46
+    assert state["throttling"] is False
+    assert state["fan_ramp_target"] > 10
+    assert state["fan_command"] > 10
 
 
 class TemperatureProtectionClient:

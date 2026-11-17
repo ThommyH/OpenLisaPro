@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.67] - 2026-11-18
+
+### Fixed
+
+- Continue increasing exhaust when the outside-dew-point-limited VPD target can still be approached with more ventilation, instead of backing off solely because the configured target is unreachable.
+
 ## [0.1.66] - 2026-11-17
 
 ### Changed

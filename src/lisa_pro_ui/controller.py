@@ -573,7 +573,13 @@ class FanPidController:
             self._prev_vpd is not None
             and ((error > 0 and float(vpd_inside) > self._prev_vpd + 0.01) or (error < 0 and float(vpd_inside) < self._prev_vpd - 0.01))
         )
-        if not temperature_active and not soft_temperature_hot and (not reachable or (at_ceiling and stuck and not improving)) and abs(error) > deadband:
+        # An outside-air-limited target is not, by itself, a reason to back
+        # off: ventilation can still move the inside VPD toward the estimated
+        # limit. Only back off for that condition when the mixed-air estimate
+        # says more ventilation will not help. Keep the ceiling/stuck guard
+        # for cases where repeated fan increases produce no VPD improvement.
+        outside_limited_without_benefit = not reachable and not helps_vpd
+        if not temperature_active and not soft_temperature_hot and (outside_limited_without_benefit or (at_ceiling and stuck and not improving)) and abs(error) > deadband:
             if self._unreachable_since is None:
                 self._unreachable_since = now
             hold = float(pid_cfg.get("unreachable_hold_s", 90))
