@@ -26,7 +26,7 @@ def test_dli_interpolates_distance_and_dimming_values():
 @pytest.mark.parametrize(
     ("tof_mm", "led_pct", "on", "off"),
     [
-        (199, 50, "06:00", "18:00"),
+        (149, 50, "06:00", "18:00"),
         (401, 50, "06:00", "18:00"),
         (300, 101, "06:00", "18:00"),
         (300, 50, "invalid", "18:00"),

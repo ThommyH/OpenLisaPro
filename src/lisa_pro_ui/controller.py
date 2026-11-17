@@ -123,6 +123,7 @@ class FanPidController:
         self._temp_led_pct: Optional[float] = None
         self._temp_led_key: Optional[tuple[int, str]] = None
         self._last_device_settings_sync_at: Optional[float] = None
+        self._last_synced_led_mode: Optional[tuple[int, str]] = None
         self._soft_temperature_key: Optional[tuple[int, str, float, float, float]] = None
         self._soft_temperature_boost_pct = 0.0
         self._soft_temperature_observed_at: Optional[float] = None
@@ -193,20 +194,24 @@ class FanPidController:
 
         self.store.ensure_fan_limits_from_phases(phases)
         cfg = self.store.get()
+        phase, phase_id = self._resolve_phase(status, phases)
+        mode = self._resolve_mode(status, phase)
         sync_now = time.monotonic()
+        active_led_mode = mode if mode in ("day", "day_silent") else "night"
+        active_led_key = (phase_id, active_led_mode)
         if (
             self._last_device_settings_sync_at is None
             or sync_now - self._last_device_settings_sync_at >= PHASE_SETTINGS_SYNC_INTERVAL_S
+            or self._last_synced_led_mode != active_led_key
         ):
             phases = self.sync_configured_settings(
                 phases,
                 cfg,
                 include_fan_limits=not bool(cfg.get("enabled")) and not manual_mode,
+                active_led_mode=active_led_mode,
             )
             self._last_device_settings_sync_at = sync_now
-
-        phase, phase_id = self._resolve_phase(status, phases)
-        mode = self._resolve_mode(status, phase)
+            self._last_synced_led_mode = active_led_key
         if self._manual_mode_active != manual_mode:
             self._manual_mode_active = manual_mode
             self._last_sent = None
@@ -942,6 +947,7 @@ class FanPidController:
         cfg: dict[str, Any],
         *,
         include_fan_limits: bool = True,
+        active_led_mode: Optional[str] = None,
     ) -> list[dict[str, Any]]:
         """Apply locally saved phase settings to the device, preserving unrelated fields."""
         led_map = cfg.get("led") or {}
@@ -960,6 +966,7 @@ class FanPidController:
                     fan_modes = fan_map.get(phase_id) or {}
                     vpd_modes = vpd_map.get(phase_id) or {}
                     settings = phase.setdefault("settings", {})
+                    has_native_day_silent = isinstance(settings.get("day_silent"), dict)
                     for mode in ("day", "day_silent", "night", "night_silent"):
                         bucket = settings.setdefault(mode, {})
                         fan_limits = fan_modes.get(mode)
@@ -993,6 +1000,26 @@ class FanPidController:
                                 if self._safe_float(bucket.get("led")) != desired:
                                     bucket["led"] = desired
                                     changed = True
+
+                    # Lisa Pro firmware versions without a day_silent phase
+                    # field use the regular day LED setting while silent mode
+                    # is active. Apply the local day_silent override to that
+                    # field, then restore the regular day value on mode change.
+                    if active_led_mode == "day_silent" and not has_native_day_silent:
+                        desired = self._safe_float(led_modes.get("day_silent"))
+                        if desired is not None:
+                            if (
+                                isinstance(override, dict)
+                                and str(override.get("phase_id")) == phase_id
+                                and str(override.get("mode")) == "day_silent"
+                            ):
+                                override_pct = self._safe_float(override.get("current_pct"))
+                                if override_pct is not None:
+                                    desired = min(desired, override_pct)
+                            day_bucket = settings.setdefault("day", {})
+                            if self._safe_float(day_bucket.get("led")) != desired:
+                                day_bucket["led"] = desired
+                                changed = True
 
                     schedule = schedule_map.get(phase_id)
                     if isinstance(schedule, dict):

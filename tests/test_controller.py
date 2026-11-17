@@ -50,6 +50,39 @@ def test_vpd_targets_prefer_per_stage_override():
     assert FanPidController._vpd_targets(cfg, 0, phase, "day") == (1.0, 1.2)
 
 
+def test_sync_maps_day_silent_led_to_day_on_older_device_and_restores_it(tmp_path):
+    device_phases = [{"id": 1, "settings": {"day": {"led": 70}, "night": {"led": 0}}}]
+    writes = []
+
+    class FakeClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return None
+
+        def get_phases(self):
+            return {"phases": deepcopy(device_phases)}
+
+        def set_phases(self, payload):
+            device_phases[:] = deepcopy(payload["phases"])
+            writes.append(deepcopy(device_phases))
+
+    controller = FanPidController(
+        device_url="http://unused",
+        store=ConfigStore(tmp_path / "control.json"),
+        client_factory=FakeClient,
+    )
+    cfg = {"led": {"1": {"day": 70, "day_silent": 15}}}
+
+    controller.sync_configured_settings([], cfg, active_led_mode="day_silent")
+    assert device_phases[0]["settings"]["day"]["led"] == 15
+
+    controller.sync_configured_settings([], cfg, active_led_mode="day")
+    assert device_phases[0]["settings"]["day"]["led"] == 70
+    assert len(writes) == 2
+
+
 def test_vpd_targets_swaps_inverted_range():
     cfg = {
         "vpd_targets": {

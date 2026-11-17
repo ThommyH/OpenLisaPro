@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.63] - 2026-11-17
+
+### Fixed
+
+- Apply the configured Day silent LED level on Lisa Pro firmware without a separate Day silent phase setting, then restore the regular Day level when silent mode ends.
+
 ## [0.1.62] - 2026-11-16
 
 ### Changed
