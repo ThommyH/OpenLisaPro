@@ -369,10 +369,10 @@ def test_soft_temperature_boost_ignores_small_changes_and_moves_in_small_steps(t
         )
 
     assert adjust(0, 26.0) == 5.0
-    assert adjust(600, 26.1) == 5.0  # +0.1°C is within sensor noise.
-    assert adjust(1200, 26.31) == 10.0  # +0.21°C sustained rise adds 5 points.
-    assert adjust(1800, 26.0) == 5.0  # A clear 0.31°C drop backs off 5 points.
-    assert adjust(2400, 25.9) == 5.0  # A small drop does not trigger another change.
+    assert adjust(299, 26.1) == 5.0  # No adjustment before five minutes.
+    assert adjust(300, 26.31) == 10.0  # Move 5 points toward the temperature target.
+    assert adjust(600, 26.0) == 5.0  # Lower temperature target backs off by 5 points.
+    assert adjust(900, 25.9) == 5.0  # A small drop does not trigger another change.
 
 
 def test_soft_temperature_boost_uses_hysteresis_near_limit(tmp_path):
@@ -386,11 +386,11 @@ def test_soft_temperature_boost_uses_hysteresis_near_limit(tmp_path):
     TemperatureProtectionClient.status_data.update({"temp_c": 25.3, "humi_rh": 60.0})
 
     controller._tick(controller.store.get())
-    assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 5.0
+    assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 4.5
 
     TemperatureProtectionClient.status_data["temp_c"] = 25.1
     controller._tick(controller.store.get())
-    assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 5.0
+    assert controller.snapshot()["state"]["temperature_adjustment_pct"] == 4.5
 
     TemperatureProtectionClient.status_data["temp_c"] = 24.8
     controller._tick(controller.store.get())
@@ -432,9 +432,9 @@ def test_soft_temperature_hot_adds_fan_correction_outside_vpd_band_and_respects_
     state = controller.snapshot()["state"]
     assert not 0.8 <= state["vpd_inside"] <= 1.2
     assert state["temperature_soft_active"] is True
-    assert state["temperature_adjustment_pct"] == 5.0
+    assert state["temperature_adjustment_pct"] == 2.0
     assert state["fan_vpd_request"] == 20.0
-    assert state["fan_ramp_target"] == 25
+    assert state["fan_ramp_target"] == 22
 
     controller.store.update({"temperature_limits": {"0": {"max_temp_c": 25}}})
     TemperatureProtectionClient.status_data.update({"humi_rh": 70.0})

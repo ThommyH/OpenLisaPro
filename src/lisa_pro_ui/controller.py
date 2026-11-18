@@ -32,16 +32,10 @@ TEMPERATURE_LED_REDUCTION_FACTOR = 0.5
 TEMPERATURE_LED_MIN_PCT = 20.0
 TEMPERATURE_LED_STEP_PCT = 10.0
 TEMPERATURE_RECOVERY_MARGIN_C = 0.5
-# Give each fan level time to affect the growbox temperature before adjusting
-# the soft-limit boost again.
-SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S = 600.0
+SOFT_TEMPERATURE_ADJUSTMENT_INTERVAL_S = 300.0
+SOFT_TEMPERATURE_ADJUSTMENT_STEP_PCT = 5.0
 SOFT_TEMPERATURE_TRIGGER_MARGIN_C = 0.2
 SOFT_TEMPERATURE_RELEASE_MARGIN_C = 0.2
-SOFT_TEMPERATURE_RISE_THRESHOLD_C = 0.2
-SOFT_TEMPERATURE_COOLING_THRESHOLD_C = 0.3
-SOFT_TEMPERATURE_BOOST_STEP_PCT = 5.0
-SOFT_TEMPERATURE_INITIAL_BOOST_PCT = 5.0
-SOFT_TEMPERATURE_MIN_BOOST_PCT = 5.0
 PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
 VPD_FAN_MIXING_FRACTION = 0.10
 VPD_FAN_MIN_BENEFIT_KPA = 0.02
@@ -129,10 +123,9 @@ class FanPidController:
         self._temp_led_key: Optional[tuple[int, str]] = None
         self._last_device_settings_sync_at: Optional[float] = None
         self._last_synced_led_mode: Optional[tuple[int, str]] = None
-        self._soft_temperature_key: Optional[tuple[int, str, float, float, float]] = None
+        self._soft_temperature_key: Optional[tuple[int, str, float]] = None
         self._soft_temperature_boost_pct = 0.0
-        self._soft_temperature_observed_at: Optional[float] = None
-        self._soft_temperature_observed_c: Optional[float] = None
+        self._soft_temperature_adjusted_at: Optional[float] = None
         self._manual_mode_active: Optional[bool] = None
 
     def start(self) -> None:
@@ -534,14 +527,7 @@ class FanPidController:
         # below takes priority.
         soft_min = (temperature_soft_limits or {}).get("min_temp_c")
         soft_max = (temperature_soft_limits or {}).get("max_temp_c")
-        soft_boost_key = self._soft_temperature_key
-        soft_boost_active = bool(
-            soft_boost_key is not None
-            and soft_boost_key[0] == int(phase_id)
-            and soft_boost_key[1] == mode
-            and soft_boost_key[2] == soft_max
-            and self._soft_temperature_boost_pct > 0
-        )
+        soft_boost_active = self._soft_temperature_boost_pct > 0
         soft_temperature_hot = (
             not temperature_active
             and temperature_inside is not None
@@ -885,72 +871,38 @@ class FanPidController:
         weight_pct_per_c: float,
         now: float,
     ) -> float:
-        """Adjust a percentage-point fan bonus using temperature trend.
-
-        The stage setting is an absolute cap. When temperature stays flat or
-        rises, move toward that cap even if the temperature excess is small;
-        back off only after a clear temperature decrease.
-        """
+        """Move the fan bonus toward its temperature target every five minutes."""
         if not hot or temperature_c is None or soft_max_c is None:
             self._reset_soft_temperature_boost()
             return 0.0
 
-        key = (
-            int(phase_id),
-            mode,
-            float(soft_max_c),
-            float(max_stage_boost_pct),
-            float(weight_pct_per_c),
-        )
+        key = (int(phase_id), mode, float(soft_max_c))
         if self._soft_temperature_key != key:
             self._reset_soft_temperature_boost()
             self._soft_temperature_key = key
 
-        target_boost = min(
+        excess_c = max(0.0, float(temperature_c) - float(soft_max_c))
+        target = min(
             max(0.0, float(max_available_pct)),
             max(0.0, float(max_stage_boost_pct)),
+            excess_c * max(0.0, float(weight_pct_per_c)),
         )
-        if target_boost <= 0.0:
-            self._reset_soft_temperature_boost()
-            return 0.0
-
-        boost_step = min(
-            SOFT_TEMPERATURE_BOOST_STEP_PCT,
-            max(0.0, float(weight_pct_per_c)),
-        )
-        if boost_step <= 0.0:
-            return round(min(self._soft_temperature_boost_pct, target_boost), 2)
-
-        if self._soft_temperature_observed_at is None:
+        if self._soft_temperature_adjusted_at is None:
             self._soft_temperature_boost_pct = min(
-                SOFT_TEMPERATURE_INITIAL_BOOST_PCT, target_boost
+                SOFT_TEMPERATURE_ADJUSTMENT_STEP_PCT, target
             )
-            self._soft_temperature_observed_at = now
-            self._soft_temperature_observed_c = float(temperature_c)
-        elif now - self._soft_temperature_observed_at >= SOFT_TEMPERATURE_OBSERVATION_INTERVAL_S:
-            previous_temp = self._soft_temperature_observed_c
-            trend = float(temperature_c) - float(previous_temp if previous_temp is not None else temperature_c)
-            if trend >= SOFT_TEMPERATURE_RISE_THRESHOLD_C:
-                self._soft_temperature_boost_pct = min(
-                    target_boost,
-                    self._soft_temperature_boost_pct + boost_step,
-                )
-            elif trend <= -SOFT_TEMPERATURE_COOLING_THRESHOLD_C:
-                self._soft_temperature_boost_pct = max(
-                    min(SOFT_TEMPERATURE_MIN_BOOST_PCT, target_boost),
-                    self._soft_temperature_boost_pct - boost_step,
-                )
-            self._soft_temperature_observed_at = now
-            self._soft_temperature_observed_c = float(temperature_c)
-
-        self._soft_temperature_boost_pct = min(self._soft_temperature_boost_pct, target_boost)
+            self._soft_temperature_adjusted_at = now
+        elif now - self._soft_temperature_adjusted_at >= SOFT_TEMPERATURE_ADJUSTMENT_INTERVAL_S:
+            difference = target - self._soft_temperature_boost_pct
+            step = min(abs(difference), SOFT_TEMPERATURE_ADJUSTMENT_STEP_PCT)
+            self._soft_temperature_boost_pct += step if difference > 0 else -step
+            self._soft_temperature_adjusted_at = now
         return round(self._soft_temperature_boost_pct, 2)
 
     def _reset_soft_temperature_boost(self) -> None:
         self._soft_temperature_key = None
         self._soft_temperature_boost_pct = 0.0
-        self._soft_temperature_observed_at = None
-        self._soft_temperature_observed_c = None
+        self._soft_temperature_adjusted_at = None
 
     @staticmethod
     def _temperature_led_base(

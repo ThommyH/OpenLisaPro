@@ -118,34 +118,29 @@ def test_saved_settings_update_device_and_drive_fan_calculation(tmp_path, monkey
     assert hot_state["fan_ramp_target"] > hot_state["fan_vpd_request"]
 
     for expected_boost in (10.0, 15.0):
-        controller._soft_temperature_observed_at = time.time() - 601
-        controller._soft_temperature_observed_c = 26.0
+        controller._soft_temperature_adjusted_at = time.time() - 301
         controller._tick(controller.store.get())
         rising_state = client.get("/api/control").get_json()["state"]
         assert rising_state["temperature_soft_triggered"] is True
         assert rising_state["temperature_adjustment_pct"] == expected_boost
 
-    # Flat temperature is not evidence that more fan is worthwhile, so keep
-    # the current boost instead of continuing to ramp it upward.
-    for expected_boost in (15.0, 15.0, 15.0):
-        controller._soft_temperature_observed_at = time.time() - 601
-        controller._soft_temperature_observed_c = 27.0
+    # Continue adjusting toward the configured temperature response every five minutes.
+    for expected_boost in (20.0, 25.0, 30.0):
+        controller._soft_temperature_adjusted_at = time.time() - 301
         controller._tick(controller.store.get())
         steady_state = client.get("/api/control").get_json()["state"]
         assert steady_state["temperature_soft_triggered"] is True
         assert steady_state["temperature_adjustment_pct"] == expected_boost
         assert steady_state["fan_ramp_target"] > steady_state["fan_vpd_request"]
 
-    # Back off only after a measured decrease across the observation window.
+    # A cooler temperature lowers the target; the boost steps down after five minutes.
     FakeLisaProClient.current_status["temp_c"] = 26.7
-    controller._soft_temperature_observed_at = time.time() - 601
-    controller._soft_temperature_observed_c = 27.0
+    controller._soft_temperature_adjusted_at = time.time() - 301
     controller._tick(controller.store.get())
     falling_state = client.get("/api/control").get_json()["state"]
-    assert falling_state["temperature_adjustment_pct"] == 10.0
+    assert falling_state["temperature_adjustment_pct"] == 25.0
 
-    # Lowering the soft maximum creates a fresh attempt immediately, even
-    # though the prior temperature observation was flat.
+    # Lowering the soft maximum starts a fresh adjustment sequence.
     saved = save_settings(fan_min=10, fan_max=70, vpd_min=0.4, soft_max=22, boost=30)
     assert saved.status_code == 200
     controller._tick(saved.get_json()["config"])

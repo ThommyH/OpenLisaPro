@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.71] - 2026-11-18
+
+### Fixed
+
+- Scale soft temperature exhaust boost with temperature excess and adjust it in 5-point steps every five minutes.
+
 ## [0.1.70] - 2026-11-18
 
 ### Added
