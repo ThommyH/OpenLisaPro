@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.72] - 2026-11-18
+
+### Fixed
+
+- Update the soft temperature control explanation to match its five-minute fan adjustment cadence.
+
 ## [0.1.71] - 2026-11-18
 
 ### Fixed

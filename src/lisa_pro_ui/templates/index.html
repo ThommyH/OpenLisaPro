@@ -272,7 +272,7 @@
             <div class="flow-arrow" aria-hidden="true">↓ <span>requested speed</span></div>
             <div class="flow-decision" data-flow-step="soft-temperature-check"><strong>Is inside temperature above the soft maximum?</strong></div>
             <div class="flow-branches">
-              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Soft limit exceeded</b><span>Start with a small fan correction 0.2°C above the soft maximum and keep it active until temperature falls 0.2°C below the limit. Every ten minutes, add up to 5 points after a rise of at least 0.2°C, or back off by up to 5 after a drop of at least 0.3°C. Smaller changes leave the fan unchanged.</span></div>
+              <div class="flow-outcome" data-flow-branch="soft-temperature-adjust"><b>Yes · Soft limit exceeded</b><span>Start with a small fan correction 0.2°C above the soft maximum and keep it active until temperature falls 0.2°C below the limit. Every five minutes, adjust the correction by up to 5 points toward the temperature-based target.</span></div>
               <div class="flow-outcome" data-flow-branch="soft-temperature-hold"><b>No</b><span>Keep the VPD fan request unchanged. A soft minimum never lowers the VPD request. The hard maximum remains a separate safety override.</span></div>
             </div>
             <div class="flow-arrow" aria-hidden="true">↓ <span>combined request</span></div>
