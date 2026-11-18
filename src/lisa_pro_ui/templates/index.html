@@ -87,7 +87,7 @@
                 </div>
                 <div class="reading xl">
                   <span class="label">VPD</span>
-                  <span class="value mono" id="vpd">—</span>
+                  <button type="button" class="value mono dli-trigger" id="vpdGuideOpen" aria-label="Show VPD recommendations by stage" aria-haspopup="dialog" aria-controls="vpdGuideDlg"><span class="dli-reading-line"><span id="vpdEstimateValue">—</span><small class="dli-unit">kPa</small></span><small class="dli-open-hint"><span aria-hidden="true">↗</span> View VPD guide</small></button>
                 </div>
                 <div class="reading xl">
                   <span class="label">ToF distance</span>
@@ -526,6 +526,32 @@
         </div>
         <p class="dli-guide-note">Approximate targets. Stage week is estimated from plant age using a 3-week seedling phase followed by 5 vegetative weeks; the growbox reports the current phase and overall grow day but not the phase start date.</p>
         <a href="https://www.pro-grow.com.au/wp-content/uploads/2023/12/DLI-User-Guide-for-Medicinal-Cannabis.pdf" target="_blank" rel="noopener noreferrer">Source: Pro Grow DLI Plant Guide</a>
+      </div>
+    </dialog>
+    <dialog class="dli-guide vpd-guide" id="vpdGuideDlg" aria-labelledby="vpdGuideTitle">
+      <div class="dli-guide-inner">
+        <div class="dli-guide-heading">
+          <h2 id="vpdGuideTitle">Recommended VPD by stage</h2>
+          <button type="button" class="btn ghost" id="vpdGuideClose" aria-label="Close">×</button>
+        </div>
+        <section class="dli-current" aria-live="polite">
+          <span class="label">Recommended now</span>
+          <strong id="vpdCurrentRecommendation">—</strong>
+          <span id="vpdRecommendationMeta"></span>
+        </section>
+        <h3>Common ambient-air VPD ranges</h3>
+        <div class="vpd-chart-wrap" role="img" aria-label="VPD recommendations by stage chart; ranges are also available in the table below">
+          <div class="vpd-chart-axis" aria-hidden="true"><span></span><div class="vpd-chart-scale"><span>0.0</span><span>0.4</span><span>0.8</span><span>1.2</span><span>1.6</span></div><span>kPa</span></div>
+          <div class="vpd-chart" id="vpdChart"></div>
+        </div>
+        <div class="dli-table-wrap">
+          <table class="dli-table">
+            <thead><tr><th scope="col">Stage</th><th scope="col">Recommended VPD range</th></tr></thead>
+            <tbody id="vpdRecommendationRows"></tbody>
+          </table>
+        </div>
+        <p class="dli-guide-note">General ambient-air starting ranges. Actual targets vary with leaf temperature, cultivar, and growing conditions; leaf VPD may differ from the air VPD shown here.</p>
+        <a href="https://www.frontiersin.org/journals/plant-science/articles/10.3389/fpls.2025.1678142/full" target="_blank" rel="noopener noreferrer">Source: Frontiers in Plant Science (2025)</a>
       </div>
     </dialog>
 

@@ -4,6 +4,11 @@
     ...[25, 30, 35, 40, 43].map((dli, i) => ({ stage: "Vegetative", key: "vegetative", week: i + 1, startDay: 22 + i * 7, endDay: 28 + i * 7, dli })),
     ...[30, 35, 40, 45, 50, 50, 45, 45].map((dli, i) => ({ stage: "Flowering", key: "flowering", week: i + 1, startDay: 57 + i * 7, endDay: 63 + i * 7, dli })),
   ];
+  const VPD_RECOMMENDATIONS = [
+    { key: "seedling", stage: "Seedlings / cuttings", min: 0.5, max: 1.0 },
+    { key: "vegetative", stage: "Vegetative", min: 0.7, max: 1.2 },
+    { key: "flowering", stage: "Flowering", min: 1.0, max: 1.5 },
+  ];
   const $ = (id) => document.getElementById(id);
   const state = {
     status: null,
@@ -309,6 +314,60 @@
     });
   }
 
+  function renderVpdGuide() {
+    const rows = $("vpdRecommendationRows");
+    const chart = $("vpdChart");
+    if (!rows || !chart) return;
+    rows.innerHTML = "";
+    chart.innerHTML = "";
+    VPD_RECOMMENDATIONS.forEach((item) => {
+      const tr = document.createElement("tr");
+      tr.dataset.stage = item.key;
+      const stageCell = document.createElement("td");
+      stageCell.textContent = window.t(item.stage);
+      const rangeCell = document.createElement("td");
+      rangeCell.textContent = `${item.min.toFixed(1)}–${item.max.toFixed(1)} kPa`;
+      tr.append(stageCell, rangeCell);
+      rows.appendChild(tr);
+
+      const row = document.createElement("div");
+      row.className = `vpd-chart-row ${item.key}`;
+      row.dataset.stage = item.key;
+      const label = document.createElement("strong");
+      label.textContent = window.t(item.stage);
+      const track = document.createElement("div");
+      track.className = "vpd-chart-track";
+      const range = document.createElement("span");
+      range.className = "vpd-chart-range";
+      range.style.left = `${item.min / 1.6 * 100}%`;
+      range.style.width = `${(item.max - item.min) / 1.6 * 100}%`;
+      track.appendChild(range);
+      const value = document.createElement("span");
+      value.className = "vpd-chart-value";
+      value.textContent = `${item.min.toFixed(1)}–${item.max.toFixed(1)}`;
+      row.append(label, track, value);
+      chart.appendChild(row);
+    });
+  }
+
+  function updateVpdRecommendation() {
+    const current = state.status?.grow?.started
+      ? VPD_RECOMMENDATIONS.find((item) => item.key === dliStageKey())
+      : null;
+    $("vpdCurrentRecommendation").textContent = current
+      ? `${current.min.toFixed(1)}–${current.max.toFixed(1)} kPa`
+      : "—";
+    $("vpdRecommendationMeta").textContent = current
+      ? `${window.t(current.stage)} · ${window.t("ambient-air guide")}`
+      : window.t("Start a grow with a recognized stage to see its recommendation.");
+    document.querySelectorAll("#vpdRecommendationRows tr, #vpdChart [data-stage]").forEach((row) => {
+      const active = !!current && row.dataset.stage === current.key;
+      row.classList.toggle("current", active);
+      if (active) row.setAttribute("aria-current", "true");
+      else row.removeAttribute("aria-current");
+    });
+  }
+
   function isDayForPhase(phase) {
     const mode = state.control?.state?.mode;
     // A stopped controller can leave a persisted snapshot with an old mode.
@@ -385,7 +444,7 @@
       (ctrlState && ctrlState.vpd_outside) != null
         ? ctrlState.vpd_outside
         : calcVpd(s.temp_out_c, s.humi_out_rh);
-    $("vpd").textContent = vpdIn == null ? "—" : `${fmt2(vpdIn)} kPa`;
+    $("vpdEstimateValue").textContent = vpdIn == null ? "—" : fmt2(vpdIn);
     $("vpdOut").textContent = vpdOut == null ? "—" : `${fmt2(vpdOut)} kPa`;
     const vpdTarget = ctrlState && ctrlState.vpd_target;
     const vpdTargetRaw = ctrlState && ctrlState.vpd_target_raw;
@@ -490,6 +549,7 @@
     updateCurrentStageCard();
     updateClimate(s, cs);
     updateDliRecommendation();
+    updateVpdRecommendation();
     updateActuators(s);
     updateGrowStrip(s);
     updateHealth(s);
@@ -1856,8 +1916,11 @@
   $("flowEventsNext")?.addEventListener("click", () => loadFlowEvents(state.flowPage + 1).catch((err) => console.error(err)));
 
   renderDliGuide();
+  renderVpdGuide();
   $("dliEstimate")?.addEventListener("click", () => $("dliGuideDlg").showModal());
   $("dliGuideClose")?.addEventListener("click", () => $("dliGuideDlg").close());
+  $("vpdGuideOpen")?.addEventListener("click", () => $("vpdGuideDlg").showModal());
+  $("vpdGuideClose")?.addEventListener("click", () => $("vpdGuideDlg").close());
 
   document.querySelectorAll("[data-chart-range]").forEach((button) => button.addEventListener("click", () => {
     state.chartHours = Number(button.dataset.chartRange);

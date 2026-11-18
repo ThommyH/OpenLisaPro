@@ -12,6 +12,7 @@ The browser communicates with the local Flask app, which proxies requests to the
 
 - Monitor inside and outside temperature, humidity, dew point, VPD, grow stage, and device status.
 - Estimate daily light integral (DLI) from ToF distance, LED output, the active phase's light schedule, and FluxShield Habibi 150 Enhanced PPFD data.
+- Open stage-based VPD reference ranges and a chart from the inside VPD reading.
 - Configure per-stage fan limits, VPD targets, temperature limits, LED levels, and light schedules.
 - Optionally control exhaust fan speed with a local PID loop and temperature protection.
 - Use complete manual mode to set fan and LED percentages directly, bypassing PID and temperature overrides.

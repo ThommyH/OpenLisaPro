@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.74] - 2026-11-18
+
+### Added
+
+- Add a clickable inside VPD guide with stage-based recommended ranges, a scaled chart, and a table that highlights the current grow stage.
+
 ## [0.1.73] - 2026-11-18
 
 ### Fixed
