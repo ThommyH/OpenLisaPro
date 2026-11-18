@@ -37,6 +37,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "manual_led_pct": 50.0,
     "vpd_targets": {},  # phase_id -> mode -> {vpd_min, vpd_max}
     "fan_limits": {},  # phase_id -> mode -> {fan_min, fan_max}
+    "circ_fan_limits": {},  # phase_id -> mode -> {fan_circ_min, fan_circ_max}
     "temperature_limits": {},  # phase_id -> hard {max_temp_c}
     "temperature_soft_limits": {},  # phase_id -> {enabled, min_temp_c?, max_temp_c?, max_boost_pct?}
     "phase_schedules": {},  # phase_id -> {on, off}
@@ -105,6 +106,8 @@ class ConfigStore:
                 self._data["vpd_targets"] = self._normalize_vpd_targets(patch["vpd_targets"])
             if "fan_limits" in patch and isinstance(patch["fan_limits"], dict):
                 self._data["fan_limits"] = self._normalize_fan_limits(patch["fan_limits"])
+            if "circ_fan_limits" in patch and isinstance(patch["circ_fan_limits"], dict):
+                self._data["circ_fan_limits"] = self._normalize_circ_fan_limits(patch["circ_fan_limits"])
             if "phase_schedules" in patch and isinstance(patch["phase_schedules"], dict):
                 self._data["phase_schedules"] = self._normalize_phase_schedules(patch["phase_schedules"])
             if "temperature_limits" in patch and isinstance(patch["temperature_limits"], dict):
@@ -136,17 +139,25 @@ class ConfigStore:
         with self._lock:
             changed = False
             limits = self._data.setdefault("fan_limits", {})
+            circ_limits = self._data.setdefault("circ_fan_limits", {})
             led = self._data.setdefault("led", {})
             vpd = self._data.setdefault("vpd_targets", {})
             for phase in phases or []:
                 phase_id = str(phase.get("id", 0))
                 settings = phase.get("settings") or {}
                 bucket = limits.setdefault(phase_id, {})
+                circ_bucket = circ_limits.setdefault(phase_id, {})
                 led_bucket = led.setdefault(phase_id, {})
                 vpd_bucket = vpd.setdefault(phase_id, {})
                 for mode in MODES:
                     source_mode = "day" if mode == "day_silent" else mode
                     m = settings.get(mode) or settings.get(source_mode) or {}
+                    if mode not in circ_bucket:
+                        circ_bucket[mode] = {
+                            "fan_circ_min": float(m.get("fan_circ_min", 0)),
+                            "fan_circ_max": float(m.get("fan_circ_max", 100)),
+                        }
+                        changed = True
                     if mode not in bucket:
                         source_limits = bucket.get(source_mode) or {}
                         if mode in ("day_silent", "night_silent"):
@@ -186,7 +197,7 @@ class ConfigStore:
         """Reset one stage's local overrides from its factory device phase."""
         key = str(phase_id)
         with self._lock:
-            for name in ("fan_limits", "vpd_targets", "led", "temperature_limits", "temperature_soft_limits", "phase_schedules"):
+            for name in ("fan_limits", "circ_fan_limits", "vpd_targets", "led", "temperature_limits", "temperature_soft_limits", "phase_schedules"):
                 values = self._data.setdefault(name, {})
                 values.pop(key, None)
             override = self._data.get("temperature_led_override")
@@ -236,6 +247,26 @@ class ConfigStore:
                 if fan_min > fan_max:
                     fan_min, fan_max = fan_max, fan_min
                 bucket[mode] = {"fan_min": fan_min, "fan_max": fan_max}
+            if bucket:
+                out[str(phase_id)] = bucket
+        return out
+
+    @staticmethod
+    def _normalize_circ_fan_limits(raw: dict[str, Any]) -> dict[str, Any]:
+        out: dict[str, Any] = {}
+        for phase_id, modes in raw.items():
+            if not isinstance(modes, dict):
+                continue
+            bucket: dict[str, Any] = {}
+            for mode in MODES:
+                values = modes.get(mode)
+                if not isinstance(values, dict):
+                    continue
+                fan_min = max(0.0, min(100.0, float(values.get("fan_circ_min", 0))))
+                fan_max = max(0.0, min(100.0, float(values.get("fan_circ_max", 100))))
+                if fan_min > fan_max:
+                    fan_min, fan_max = fan_max, fan_min
+                bucket[mode] = {"fan_circ_min": fan_min, "fan_circ_max": fan_max}
             if bucket:
                 out[str(phase_id)] = bucket
         return out
@@ -361,6 +392,7 @@ class ConfigStore:
 
         out.setdefault("vpd_targets", {})
         out.setdefault("fan_limits", {})
+        out.setdefault("circ_fan_limits", {})
         out.setdefault("temperature_limits", {})
         out.setdefault("temperature_soft_limits", {})
         out.setdefault("phase_schedules", {})
@@ -386,6 +418,10 @@ class ConfigStore:
             out["led"] = self._normalize_led(out["led"])
         if isinstance(out.get("vpd_targets"), dict):
             out["vpd_targets"] = self._normalize_vpd_targets(out["vpd_targets"])
+        if isinstance(out.get("circ_fan_limits"), dict):
+            out["circ_fan_limits"] = self._normalize_circ_fan_limits(out["circ_fan_limits"])
+        else:
+            out["circ_fan_limits"] = {}
         if isinstance(out.get("temperature_limits"), dict):
             out["temperature_limits"] = self._normalize_temperature_limits(out["temperature_limits"])
         if isinstance(out.get("temperature_soft_limits"), dict):

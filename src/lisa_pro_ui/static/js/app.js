@@ -755,7 +755,7 @@
     $("pidInterval").value = pid.interval_s ?? "";
     $("pidDeadband").value = pid.deadband_kpa ?? "";
     $("pidTemperatureWeight").value = pid.temperature_weight_pct_per_c ?? 15;
-    renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {}, cfg.vpd_targets || {}, cfg.temperature_limits || {}, cfg.temperature_soft_limits || {});
+    renderStageCards(state.phases, cfg.fan_limits || {}, cfg.led || {}, cfg.vpd_targets || {}, cfg.temperature_limits || {}, cfg.temperature_soft_limits || {}, cfg.circ_fan_limits || {});
     state.controlHydrated = true;
     state.controlDirty = false;
   }
@@ -970,7 +970,7 @@
     });
   }
 
-  function renderStageCards(phases, limits, ledMap, vpdMap, temperatureMap, softTemperatureMap) {
+  function renderStageCards(phases, limits, ledMap, vpdMap, temperatureMap, softTemperatureMap, circFanMap = {}) {
     const root = $("fanLimitsRoot");
     root.innerHTML = "";
     (phases || []).forEach((phase) => {
@@ -992,6 +992,9 @@
         const device = ((phase.settings || {})[mode]) || {};
         const fanMin = lim.fan_min != null ? lim.fan_min : (mode.endsWith("silent") ? 10 : device.fan_min ?? 20);
         const fanMax = lim.fan_max != null ? lim.fan_max : (mode.endsWith("silent") ? 25 : device.fan_max ?? 80);
+        const circLimits = (circFanMap[id] && circFanMap[id][mode]) || {};
+        const circFanMin = circLimits.fan_circ_min != null ? circLimits.fan_circ_min : device.fan_circ_min ?? 0;
+        const circFanMax = circLimits.fan_circ_max != null ? circLimits.fan_circ_max : device.fan_circ_max ?? 100;
         const vpdMin = vpd.vpd_min != null ? vpd.vpd_min : device.vpd_min ?? 0.8;
         const vpdMax = vpd.vpd_max != null ? vpd.vpd_max : device.vpd_max ?? 1.2;
         const ledBlock =
@@ -1037,6 +1040,20 @@
               step: 1,
               unit: "%",
               kind: "fan",
+            })}
+            ${dualRangeHtml({
+              phaseId: id,
+              mode,
+              min: circFanMin,
+              max: circFanMax,
+              label: "Circ fan",
+              fieldLo: "fan_circ_min",
+              fieldHi: "fan_circ_max",
+              rangeMin: 0,
+              rangeMax: 100,
+              step: 1,
+              unit: "%",
+              kind: "circ-fan",
             })}
             ${ledBlock}
           </div>
@@ -1163,6 +1180,10 @@
     return collectKindLimits("fan", ["fan_min", "fan_max"]);
   }
 
+  function collectCircFanLimits() {
+    return collectKindLimits("circ-fan", ["fan_circ_min", "fan_circ_max"]);
+  }
+
   function collectVpdTargets() {
     return collectKindLimits("vpd", ["vpd_min", "vpd_max"]);
   }
@@ -1230,6 +1251,7 @@
         temperature_weight_pct_per_c: Number($("pidTemperatureWeight").value),
       },
       fan_limits: collectFanLimits(),
+      circ_fan_limits: collectCircFanLimits(),
       led: collectLed(),
       phase_schedules: collectPhaseSchedules(),
       temperature_limits: collectTemperatureLimits(),
@@ -1715,6 +1737,14 @@
         for (const [mode, lim] of Object.entries(modes)) {
           if (lim.fan_min > lim.fan_max) {
             toast(`Phase ${phaseId} ${mode}: fan min > max`);
+            return;
+          }
+        }
+      }
+      for (const [phaseId, modes] of Object.entries(payload.circ_fan_limits)) {
+        for (const [mode, lim] of Object.entries(modes)) {
+          if (lim.fan_circ_min > lim.fan_circ_max) {
+            toast(`Phase ${phaseId} ${mode}: Circ fan min > max`);
             return;
           }
         }

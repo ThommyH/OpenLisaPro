@@ -994,6 +994,7 @@ class FanPidController:
         """Apply locally saved phase settings to the device, preserving unrelated fields."""
         led_map = cfg.get("led") or {}
         fan_map = cfg.get("fan_limits") or {}
+        circ_fan_map = cfg.get("circ_fan_limits") or {}
         vpd_map = cfg.get("vpd_targets") or {}
         schedule_map = cfg.get("phase_schedules") or {}
         override = cfg.get("temperature_led_override")
@@ -1006,6 +1007,7 @@ class FanPidController:
                     phase_id = str(phase.get("id", 0))
                     led_modes = led_map.get(phase_id) or {}
                     fan_modes = fan_map.get(phase_id) or {}
+                    circ_fan_modes = circ_fan_map.get(phase_id) or {}
                     vpd_modes = vpd_map.get(phase_id) or {}
                     settings = phase.setdefault("settings", {})
                     has_native_day_silent = isinstance(settings.get("day_silent"), dict)
@@ -1018,6 +1020,13 @@ class FanPidController:
                         if include_fan_limits and isinstance(fan_limits, dict):
                             for field in ("fan_min", "fan_max"):
                                 value = self._safe_float(fan_limits.get(field))
+                                if value is not None and self._safe_float(bucket.get(field)) != value:
+                                    bucket[field] = value
+                                    changed = True
+                        circ_limits = circ_fan_modes.get(mode)
+                        if isinstance(circ_limits, dict):
+                            for field in ("fan_circ_min", "fan_circ_max"):
+                                value = self._safe_float(circ_limits.get(field))
                                 if value is not None and self._safe_float(bucket.get(field)) != value:
                                     bucket[field] = value
                                     changed = True

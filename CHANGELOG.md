@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.70] - 2026-11-18
+
+### Added
+
+- Add per stage and per mode circulation fan minimum and maximum controls.
+
 ## [0.1.69] - 2026-11-18
 
 ### Fixed

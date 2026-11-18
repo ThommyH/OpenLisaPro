@@ -69,6 +69,7 @@
       "Light": "Licht",
       "Exhaust": "Abluft",
       "Circ": "Umluft",
+      "Circ fan": "Umluftlüfter",
       "Pump": "Pumpe",
       "Door": "Tür",
       "Panel": "Panel",

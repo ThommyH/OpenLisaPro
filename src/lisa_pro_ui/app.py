@@ -566,6 +566,7 @@ def create_app(
         device_settings = {
             "led",
             "fan_limits",
+            "circ_fan_limits",
             "vpd_targets",
             "phase_schedules",
             "manual_mode",
