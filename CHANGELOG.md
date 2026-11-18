@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.73] - 2026-11-18
+
+### Fixed
+
+- Use outdoor dew point at indoor temperature to decide whether ventilation can move VPD toward target, instead of a fixed mixed-air step that understated the drying effect observed in live data.
+
 ## [0.1.72] - 2026-11-18
 
 ### Fixed

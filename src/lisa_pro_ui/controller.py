@@ -16,8 +16,6 @@ from lisa_pro_ui.pid import PIDController
 from lisa_pro_ui.telemetry import TelemetryStore
 from lisa_pro_ui.vpd import (
     dew_point_c,
-    mixed_air_vpd_kpa,
-    saturation_vapor_pressure_kpa,
     vpd_from_dew_point_kpa,
     vpd_kpa,
 )
@@ -37,7 +35,6 @@ SOFT_TEMPERATURE_ADJUSTMENT_STEP_PCT = 5.0
 SOFT_TEMPERATURE_TRIGGER_MARGIN_C = 0.2
 SOFT_TEMPERATURE_RELEASE_MARGIN_C = 0.2
 PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
-VPD_FAN_MIXING_FRACTION = 0.10
 VPD_FAN_MIN_BENEFIT_KPA = 0.02
 # Small dew-point/VPD model and sensor differences should not make the UI
 # claim a target is unreachable when the estimated limit is nearly there.
@@ -484,31 +481,22 @@ class FanPidController:
 
         deadband = float(pid_cfg.get("deadband_kpa", 0.03))
         error = target - float(vpd_inside) if vpd_inside is not None else 0.0
-        projected_vpd = None
-        if all(
-            value is not None
-            for value in (temperature_inside, temperature_outside, vpd_inside, vpd_outside)
-        ):
-            vapor_inside = saturation_vapor_pressure_kpa(temperature_inside) - float(vpd_inside)
-            vapor_outside = saturation_vapor_pressure_kpa(temperature_outside) - float(vpd_outside)
-            projected_vpd = mixed_air_vpd_kpa(
-                temperature_inside,
-                vapor_inside,
-                temperature_outside,
-                vapor_outside,
-                VPD_FAN_MIXING_FRACTION,
-            )
-        projected_change = (
-            projected_vpd - float(vpd_inside) if projected_vpd is not None else None
+        # Estimate ventilation's VPD direction from outdoor dew point at the
+        # current indoor temperature. The prior fixed 10% air-mix model let
+        # outdoor cooling mask the moisture removal seen in recent operation.
+        ventilation_change = (
+            ventilation_vpd_limit - float(vpd_inside)
+            if ventilation_vpd_limit is not None and vpd_inside is not None
+            else None
         )
         helps_vpd = (
-            projected_change is not None
-            and abs(projected_change) >= VPD_FAN_MIN_BENEFIT_KPA
-            and error * projected_change > 0
+            ventilation_change is not None
+            and abs(ventilation_change) >= VPD_FAN_MIN_BENEFIT_KPA
+            and error * ventilation_change > 0
         )
-        # Predict the direction from a small mixed-air step that changes both
-        # temperature and moisture. If that step cannot meaningfully move VPD
-        # toward target, keep the configured fan minimum for quiet operation.
+        # Only increase ventilation when outside moisture can move VPD toward
+        # target; keep the configured minimum when its effect is too small or
+        # points in the wrong direction.
         fan_error = abs(error) if helps_vpd else 0.0
         if not helps_vpd:
             self._pid.reset()
@@ -517,8 +505,8 @@ class FanPidController:
             pid_out, fan_min, fan_max, fan_error, deadband=deadband
         )
         # The configured fan minimum is the quiet baseline. Let the PID use
-        # the configured fan range when mixed-air estimates show ventilation
-        # can move VPD toward target; stage limits and ramping bound the request.
+        # the configured fan range when outdoor moisture can move VPD toward
+        # target; stage limits and ramping bound the request.
         vpd_fan_request = desired
 
         # Soft temperature control is a gradual feedback boost above the VPD

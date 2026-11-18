@@ -269,7 +269,7 @@ def make_temperature_controller(tmp_path):
     )
 
 
-def test_vpd_fan_assist_uses_mixed_air_direction_and_configured_range(tmp_path):
+def test_vpd_fan_assist_uses_outside_dew_point_direction_and_configured_range(tmp_path):
     controller = make_temperature_controller(tmp_path)
     controller.store.update(
         {
@@ -285,7 +285,7 @@ def test_vpd_fan_assist_uses_mixed_air_direction_and_configured_range(tmp_path):
             "temp_c": 25.0,
             "humi_rh": 48.0,
             "temp_out_c": 22.0,
-            "humi_out_rh": 50.0,
+            "humi_out_rh": 80.0,
             "fan_pct": 20.0,
         }
     )
@@ -294,7 +294,7 @@ def test_vpd_fan_assist_uses_mixed_air_direction_and_configured_range(tmp_path):
     beneficial = controller.snapshot()["state"]
     assert 30.0 < beneficial["fan_vpd_request"] <= 80.0
 
-    # When additional ventilation moves VPD away from target, use the minimum.
+    # Drier outside air would raise VPD away from this lower target.
     TemperatureProtectionClient.status_data.update({"temp_out_c": 25.0, "humi_out_rh": 30.0})
     controller._tick(controller.store.get())
     not_beneficial = controller.snapshot()["state"]
