@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.75] - 2026-11-18
+
+### Changed
+
+- Expand the VPD stage guide with additional research and industry references, including the narrower reported vegetative band and a clear distinction between air VPD and leaf VPD.
+
 ## [0.1.74] - 2026-11-18
 
 ### Added

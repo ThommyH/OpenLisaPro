@@ -4,12 +4,30 @@
     ...[25, 30, 35, 40, 43].map((dli, i) => ({ stage: "Vegetative", key: "vegetative", week: i + 1, startDay: 22 + i * 7, endDay: 28 + i * 7, dli })),
     ...[30, 35, 40, 45, 50, 50, 45, 45].map((dli, i) => ({ stage: "Flowering", key: "flowering", week: i + 1, startDay: 57 + i * 7, endDay: 63 + i * 7, dli })),
   ];
+  const VPD_SYNTHESIS_URL = "https://www.frontiersin.org/journals/plant-science/articles/10.3389/fpls.2025.1678142/full";
   const VPD_RECOMMENDATIONS = [
-    { key: "seedling", stage: "Seedlings / cuttings", min: 0.5, max: 1.0 },
-    { key: "vegetative", stage: "Vegetative", min: 0.7, max: 1.2 },
-    { key: "flowering", stage: "Flowering", min: 1.0, max: 1.5 },
+    {
+      key: "seedling", stage: "Seedlings / cuttings", min: 0.5, max: 1.0,
+      sources: [{ label: "2025 literature summary", url: VPD_SYNTHESIS_URL }],
+    },
+    {
+      key: "vegetative", stage: "Vegetative", min: 0.7, max: 1.2,
+      referenceBand: { min: 0.8, max: 1.1 },
+      sources: [
+        { label: "2025 literature summary", url: VPD_SYNTHESIS_URL },
+        { label: "Breit et al. (2019): 0.8–1.1", url: "https://www.cannabissciencetech.com/view/understanding-vpd-and-transpiration-rates-cannabis-cultivation-operations" },
+      ],
+    },
+    {
+      key: "flowering", stage: "Flowering", min: 1.0, max: 1.5,
+      sources: [
+        { label: "2025 literature summary", url: VPD_SYNTHESIS_URL },
+        { label: "Breit et al. (2019)", url: "https://www.cannabissciencetech.com/view/understanding-vpd-and-transpiration-rates-cannabis-cultivation-operations" },
+      ],
+    },
   ];
   const $ = (id) => document.getElementById(id);
+  const fmtVpdGuide = (value) => Number(value).toLocaleString(window.i18n.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const state = {
     status: null,
     busy: false,
@@ -326,8 +344,18 @@
       const stageCell = document.createElement("td");
       stageCell.textContent = window.t(item.stage);
       const rangeCell = document.createElement("td");
-      rangeCell.textContent = `${item.min.toFixed(1)}–${item.max.toFixed(1)} kPa`;
-      tr.append(stageCell, rangeCell);
+      rangeCell.textContent = `${fmtVpdGuide(item.min)}–${fmtVpdGuide(item.max)} kPa`;
+      const sourcesCell = document.createElement("td");
+      item.sources.forEach((source, index) => {
+        if (index) sourcesCell.append(" · ");
+        const link = document.createElement("a");
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = window.t(source.label);
+        sourcesCell.appendChild(link);
+      });
+      tr.append(stageCell, rangeCell, sourcesCell);
       rows.appendChild(tr);
 
       const row = document.createElement("div");
@@ -342,9 +370,16 @@
       range.style.left = `${item.min / 1.6 * 100}%`;
       range.style.width = `${(item.max - item.min) / 1.6 * 100}%`;
       track.appendChild(range);
+      if (item.referenceBand) {
+        const reference = document.createElement("span");
+        reference.className = "vpd-chart-reference";
+        reference.style.left = `${item.referenceBand.min / 1.6 * 100}%`;
+        reference.style.width = `${(item.referenceBand.max - item.referenceBand.min) / 1.6 * 100}%`;
+        track.appendChild(reference);
+      }
       const value = document.createElement("span");
       value.className = "vpd-chart-value";
-      value.textContent = `${item.min.toFixed(1)}–${item.max.toFixed(1)}`;
+      value.textContent = `${fmtVpdGuide(item.min)}–${fmtVpdGuide(item.max)}`;
       row.append(label, track, value);
       chart.appendChild(row);
     });
@@ -355,7 +390,7 @@
       ? VPD_RECOMMENDATIONS.find((item) => item.key === dliStageKey())
       : null;
     $("vpdCurrentRecommendation").textContent = current
-      ? `${current.min.toFixed(1)}–${current.max.toFixed(1)} kPa`
+      ? `${fmtVpdGuide(current.min)}–${fmtVpdGuide(current.max)} kPa`
       : "—";
     $("vpdRecommendationMeta").textContent = current
       ? `${window.t(current.stage)} · ${window.t("ambient-air guide")}`
