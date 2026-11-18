@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.69] - 2026-11-18
+
+### Fixed
+
+- Derive the dashboard day/night period from the active phase schedule when the local controller is stopped, instead of using its stale mode snapshot.
+
 ## [0.1.68] - 2026-11-18
 
 ### Fixed

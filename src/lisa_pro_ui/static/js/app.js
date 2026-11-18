@@ -311,7 +311,10 @@
 
   function isDayForPhase(phase) {
     const mode = state.control?.state?.mode;
-    if (["day", "day_silent", "night", "night_silent"].includes(mode)) {
+    // A stopped controller can leave a persisted snapshot with an old mode.
+    // Only use its mode while it is actively ticking; otherwise derive the
+    // period from the current phase schedule below.
+    if (state.control?.state?.running && ["day", "day_silent", "night", "night_silent"].includes(mode)) {
       return mode === "day" || mode === "day_silent";
     }
 
