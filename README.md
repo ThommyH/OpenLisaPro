@@ -15,6 +15,7 @@ The browser communicates with the local Flask app, which proxies requests to the
 - Open stage-based VPD reference ranges and a chart from the inside VPD reading.
 - Configure per-stage fan limits, VPD targets, temperature limits, LED levels, and light schedules.
 - Optionally control exhaust fan speed with a local PID loop and temperature protection.
+- Treat VPD targets within 0.05 kPa of the estimated outside-air ventilation limit as reachable.
 - Use complete manual mode to set fan and LED percentages directly, bypassing PID and temperature overrides.
 - Show sensor temperature and humidity to one decimal place when device readings include fractions.
 - Gradually boost fan speed above a stage's soft temperature limit until temperature starts falling, with a per-stage boost cap.

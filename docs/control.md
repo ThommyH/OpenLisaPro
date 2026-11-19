@@ -14,7 +14,7 @@ The local PID controller is enabled by default for new installations. Toggle it 
 
 Each stage can have separate VPD targets and fan limits for Day, Day silent, Night, and Night silent. The configured light-on and light-off schedule determines day and night, including schedules that cross midnight. The growbox's silent state selects the silent mode. Night and Night silent LED output is fixed at 0%.
 
-The controller uses inside VPD as its goal and estimates the ventilation limit from outside dew point. It ramps fan changes to avoid abrupt speed shifts. The live status shows the current command and, while ramping, its target.
+The controller uses inside VPD as its goal and estimates the ventilation limit from outside dew point. It treats a target as reachable when it is within 0.05 kPa of that estimated limit. It ramps fan changes to avoid abrupt speed shifts. The live status shows the current command and, while ramping, its target.
 
 ## Temperature protection
 

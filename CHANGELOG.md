@@ -2,6 +2,12 @@
 
 Notable changes to OpenLisaPro are recorded here. Dates use the release day.
 
+## [0.1.76] - 2026-11-19
+
+### Changed
+
+- Tighten the outside-dew-point VPD reachability tolerance from 0.10 to 0.05 kPa.
+
 ## [0.1.75] - 2026-11-18
 
 ### Changed

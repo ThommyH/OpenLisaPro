@@ -187,13 +187,12 @@ def test_controller_caps_target_using_outside_dew_point_at_inside_temperature(tm
     assert state["fan_ramp_target"] > 10
     assert state["fan_command"] > 10
 
-    # A small gap between the target and dew-point estimate is within sensor
-    # and model tolerance, so retain the selected target in the UI.
-    store.update({"vpd_targets": {"0": {"day": {"vpd_min": 1.30, "vpd_max": 1.7}}}})
+    # A 0.05 kPa gap is within tolerance, so retain the selected target.
+    store.update({"vpd_targets": {"0": {"day": {"vpd_min": 1.29, "vpd_max": 1.7}}}})
     controller._tick(store.get())
     state = controller.snapshot()["state"]
-    assert state["vpd_target_raw"] == 1.3
-    assert state["vpd_target"] == 1.3
+    assert state["vpd_target_raw"] == 1.29
+    assert state["vpd_target"] == 1.29
     assert state["vpd_reachable"] is True
 
 
@@ -330,9 +329,9 @@ def test_soft_temperature_high_adds_small_fan_correction_inside_vpd_band(tmp_pat
 
     state = controller.snapshot()["state"]
     assert 0.8 <= state["vpd_inside"] <= 1.2
-    assert state["temperature_adjustment_pct"] == 5.0
+    assert state["temperature_adjustment_pct"] == 2.0
     assert state["temperature_soft_active"] is True
-    assert state["fan_ramp_target"] == 25
+    assert state["fan_ramp_target"] == 22
 
 
 def test_soft_temperature_respects_per_stage_maximum_fan_boost(tmp_path):
@@ -371,8 +370,9 @@ def test_soft_temperature_boost_ignores_small_changes_and_moves_in_small_steps(t
     assert adjust(0, 26.0) == 5.0
     assert adjust(299, 26.1) == 5.0  # No adjustment before five minutes.
     assert adjust(300, 26.31) == 10.0  # Move 5 points toward the temperature target.
-    assert adjust(600, 26.0) == 5.0  # Lower temperature target backs off by 5 points.
-    assert adjust(900, 25.9) == 5.0  # A small drop does not trigger another change.
+    assert adjust(600, 25.3) == 5.0  # Back off 5 points toward the 4.5-point target.
+    assert adjust(900, 25.3) == 4.5  # Reach the remaining 4.5-point target.
+    assert adjust(1200, 25.0) == 0.0  # Clear the boost at the soft maximum.
 
 
 def test_soft_temperature_boost_uses_hysteresis_near_limit(tmp_path):
@@ -466,9 +466,9 @@ def test_soft_temperature_hot_prevents_unreachable_vpd_backoff(tmp_path):
     controller._tick(controller.store.get())
 
     state = controller.snapshot()["state"]
-    assert state["temperature_adjustment_pct"] == 5.0
+    assert state["temperature_adjustment_pct"] == 4.0
     assert state["throttling"] is False
-    assert state["fan_ramp_target"] >= 25
+    assert state["fan_ramp_target"] >= 24
 
 
 def test_disabled_soft_temperature_limits_do_not_adjust_fan(tmp_path):

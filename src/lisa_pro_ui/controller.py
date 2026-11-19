@@ -38,7 +38,7 @@ PHASE_SETTINGS_SYNC_INTERVAL_S = 60.0
 VPD_FAN_MIN_BENEFIT_KPA = 0.02
 # Small dew-point/VPD model and sensor differences should not make the UI
 # claim a target is unreachable when the estimated limit is nearly there.
-OUTSIDE_VPD_LIMIT_TOLERANCE_KPA = 0.10
+OUTSIDE_VPD_LIMIT_TOLERANCE_KPA = 0.05
 
 PHASE_NAME_HINTS = (
     ("flower", ("flower", "blüte", "bluete", "blute", "bloom")),
@@ -314,7 +314,7 @@ class FanPidController:
         # dependent and cannot be compared directly with the inside target.
         reachable = (
             ventilation_vpd_limit is None
-            or target_raw <= ventilation_vpd_limit + OUTSIDE_VPD_LIMIT_TOLERANCE_KPA
+            or target_raw <= ventilation_vpd_limit + OUTSIDE_VPD_LIMIT_TOLERANCE_KPA + 1e-9
         )
         target = (
             target_raw
